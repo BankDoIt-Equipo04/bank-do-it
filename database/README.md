@@ -161,8 +161,8 @@ SELECT * FROM resolver_apuesta(3, 1, 'ganada');
 SELECT * FROM v_bankroll_resumen WHERE usuario_id = 3;
 ```
 
-## Pendiente para #17
+## Base distribuida (#17)
 
-- Secuencias por paridad: fragmento impar `usuario_id` con `START 1 INCREMENT 2` y par con `START 2 INCREMENT 2`.
-- Copiar el catálogo (deporte, equipo, partido) desde un solo dueño hacia el otro fragmento.
-- Rol de la API con permiso solo para ejecutar las funciones (sin `INSERT`/`UPDATE` directos).
+La separación en fragmentos impar/par con réplicas síncronas, las secuencias por paridad y la copia del catálogo están en [distribuido/](distribuido/README.md). Esta carpeta (`sql/`) sigue siendo la base de una sola instancia que usan ambos fragmentos.
+
+Pendiente: rol de la API con permiso solo para ejecutar las funciones (sin `INSERT`/`UPDATE` directos).
