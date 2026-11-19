@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'api_apuestas.dart';
+import 'recuerdo.dart';
 
 class Registro extends StatefulWidget {
   const Registro({super.key, required this.api, required this.historial});
@@ -283,6 +284,7 @@ class _DetalleState extends State<Detalle> {
                 ],
               ),
             if (error != null) Text(error!),
+            Recuerdo(api: widget.api, apuestaId: a["id"]),
           ],
         ),
       ),

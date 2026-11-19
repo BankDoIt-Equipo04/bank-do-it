@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -129,6 +130,35 @@ class ApiApuestas {
         'La API devolvió una respuesta inesperada.',
         reintentar: true,
       );
+    }
+  }
+
+  Future<Uint8List?> foto(int id, {Uint8List? contenido}) async {
+    final uri = Uri.parse('$servidor/usuarios/$usuario/apuestas/$id/recuerdo');
+    try {
+      final respuesta =
+          await (contenido == null
+                  ? cliente.get(uri)
+                  : cliente.put(
+                      uri,
+                      headers: {'Content-Type': 'application/octet-stream'},
+                      body: contenido,
+                    ))
+              .timeout(const Duration(seconds: 30));
+      if (respuesta.statusCode == 204) return null;
+      if (respuesta.statusCode == 200 && contenido == null) {
+        return respuesta.bodyBytes;
+      }
+      throw FalloApi(switch (respuesta.statusCode) {
+        413 => 'La imagen excede el límite de 10 MB o 32 megapíxeles.',
+        415 => 'Elige una imagen JPEG, PNG o WebP válida.',
+        404 => 'No se encontró la apuesta.',
+        _ => 'No se pudo acceder al recuerdo. Inténtalo de nuevo.',
+      });
+    } on http.ClientException {
+      throw FalloApi('Comprueba la conexión con la API.');
+    } on TimeoutException {
+      throw FalloApi('La API tardó en responder. Inténtalo de nuevo.');
     }
   }
 

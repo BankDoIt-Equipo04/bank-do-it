@@ -1,9 +1,11 @@
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
+from io import BytesIO
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from app.datos_demo import preparar, ruta_demo
 from app.main import app
@@ -114,3 +116,22 @@ def test_historial_y_limite_semanal_al_confirmar(demo):
     assert final['bankroll'] == aceptada.json()['bankroll']
     assert final['presupuesto']['usado_centavos'] == 55000
     assert cliente.get('/usuarios/4/historial').json()['apuestas'] == []
+
+def test_recuerdo_persiste_solo_en_su_apuesta(demo):
+    cliente, _ = demo
+    primera = enviar(cliente).json()["apuesta"]["id"]
+    segunda = enviar(cliente, clave="otra").json()["apuesta"]["id"]
+    url = f"{URL}/{primera}/recuerdo"
+    antes = cliente.get(SALDO).json()
+    assert cliente.get(url).status_code == 204
+    foto = BytesIO()
+    Image.new("RGB", (24, 16)).save(foto, format="PNG")
+    assert cliente.put(url, content=foto.getvalue()).status_code == 204
+    assert cliente.put(url, content=b"archivo incorrecto").status_code == 415
+    assert cliente.put(url, content=bytes(10 * 1024 * 1024 + 1)).status_code == 413
+    assert cliente.get(url).content == foto.getvalue()
+    assert cliente.get(f"{URL}/{segunda}/recuerdo").status_code == 204
+    otro = f"/usuarios/4/apuestas/{primera}/recuerdo"
+    assert cliente.get(otro).status_code == 404
+    assert cliente.put(otro, content=foto.getvalue()).status_code == 404
+    assert cliente.get(SALDO).json() == antes

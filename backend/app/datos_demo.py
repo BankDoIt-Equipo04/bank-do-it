@@ -28,6 +28,11 @@ def preparar(ruta: Path) -> None:
                 estado TEXT NOT NULL CHECK (estado IN ('pendiente','ganada','perdida','anulada')),
                 UNIQUE (usuario_id, clave)
             );
+            CREATE TABLE IF NOT EXISTS recuerdo (
+                apuesta_id INTEGER PRIMARY KEY REFERENCES apuesta(id),
+                tipo TEXT NOT NULL,
+                contenido BLOB NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS movimiento (
                 apuesta_id INTEGER NOT NULL REFERENCES apuesta(id),
                 tipo TEXT NOT NULL CHECK (tipo IN ('reserva','liquidacion')),

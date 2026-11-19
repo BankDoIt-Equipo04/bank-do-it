@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .apuestas import router
+from .recuerdos import router as recuerdos
 
 app = FastAPI(
     title="BANKDOIT API",
@@ -17,6 +18,7 @@ app.add_middleware(
     allow_headers=["Content-Type", "Idempotency-Key"],
 )
 app.include_router(router)
+app.include_router(recuerdos)
 
 
 @app.get("/health")
