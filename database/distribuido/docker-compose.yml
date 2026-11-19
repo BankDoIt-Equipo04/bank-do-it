@@ -1,0 +1,112 @@
+# BANKDOIT · Fragmentos de PostgreSQL y sus réplicas (#17)
+#
+#   Nodo A (PC de Luis)  : primario F-impar + réplica F-par
+#   Nodo B (remoto)      : primario F-par   + réplica F-impar
+#
+# Simulación en una sola computadora (los cuatro servicios):
+#   docker compose --profile nodo-a --profile nodo-b up -d
+# Despliegue real en dos equipos (ver README.md):
+#   PC de Luis : docker compose --profile nodo-a up -d
+#   Nodo remoto: docker compose --profile nodo-b up -d
+# Las direcciones del otro nodo se configuran en .env (*_HOST / *_PUERTO).
+
+x-postgres: &postgres
+  image: postgres:16.4
+  environment: &entorno
+    POSTGRES_DB: ${POSTGRES_DB:-bankdoit}
+    POSTGRES_USER: ${POSTGRES_USER:-bankdoit}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Copia .env.example a .env y define POSTGRES_PASSWORD}
+    REPLICADOR_PASSWORD: ${REPLICADOR_PASSWORD:?Define REPLICADOR_PASSWORD en .env}
+    TZ: America/Mexico_City
+    PGTZ: America/Mexico_City
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+    interval: 3s
+    timeout: 3s
+    retries: 40
+
+services:
+  # ------------------------------------------------------------- Nodo A
+  nodo-a-primario-impar:
+    <<: *postgres
+    profiles: ["nodo-a"]
+    container_name: nodo-a-primario-impar
+    environment:
+      <<: *entorno
+      FRAGMENTO: impar
+      REPLICA_NOMBRE: replica_impar
+    command: ["postgres", "-c", "wal_level=logical", "-c", "max_wal_senders=10",
+              "-c", "max_replication_slots=10", "-c", "cluster_name=primario_impar"]
+    ports: ["${BIND_IP:-127.0.0.1}:${PUERTO_A_PRIMARIO:-5441}:5432"]
+    volumes:
+      - datos_a_primario_impar:/var/lib/postgresql/data
+      - ../sql/01_esquema.sql:/docker-entrypoint-initdb.d/01_esquema.sql:ro
+      - ../sql/02_funciones_triggers.sql:/docker-entrypoint-initdb.d/02_funciones_triggers.sql:ro
+      - ./init/10_fragmento.sh:/docker-entrypoint-initdb.d/10_fragmento.sh:ro
+      - ./init:/scripts:ro
+      - ./datos:/datos:ro
+      - ./pruebas:/pruebas:ro
+
+  nodo-a-replica-par:
+    <<: *postgres
+    profiles: ["nodo-a"]
+    container_name: nodo-a-replica-par
+    user: postgres
+    entrypoint: ["bash", "/scripts/replica.sh"]
+    environment:
+      <<: *entorno
+      REPLICA_NOMBRE: replica_par
+      PRIMARIO_HOST: ${PAR_PRIMARIO_HOST:-nodo-b-primario-par}
+      PRIMARIO_PUERTO: ${PAR_PRIMARIO_PUERTO:-5432}
+    ports: ["${BIND_IP:-127.0.0.1}:${PUERTO_A_REPLICA:-5442}:5432"]
+    volumes:
+      - datos_a_replica_par:/var/lib/postgresql/data
+      - ./init/replica.sh:/scripts/replica.sh:ro
+      - ./pruebas:/pruebas:ro
+
+  # ------------------------------------------------------------- Nodo B
+  nodo-b-primario-par:
+    <<: *postgres
+    profiles: ["nodo-b"]
+    container_name: nodo-b-primario-par
+    environment:
+      <<: *entorno
+      FRAGMENTO: par
+      REPLICA_NOMBRE: replica_par
+      # Dueño del catálogo común (se copia por replicación lógica).
+      CATALOGO_HOST: ${IMPAR_PRIMARIO_HOST:-nodo-a-primario-impar}
+      CATALOGO_PUERTO: ${IMPAR_PRIMARIO_PUERTO:-5432}
+    command: ["postgres", "-c", "wal_level=logical", "-c", "max_wal_senders=10",
+              "-c", "max_replication_slots=10", "-c", "cluster_name=primario_par"]
+    ports: ["${BIND_IP:-127.0.0.1}:${PUERTO_B_PRIMARIO:-5451}:5432"]
+    volumes:
+      - datos_b_primario_par:/var/lib/postgresql/data
+      - ../sql/01_esquema.sql:/docker-entrypoint-initdb.d/01_esquema.sql:ro
+      - ../sql/02_funciones_triggers.sql:/docker-entrypoint-initdb.d/02_funciones_triggers.sql:ro
+      - ./init/10_fragmento.sh:/docker-entrypoint-initdb.d/10_fragmento.sh:ro
+      - ./init:/scripts:ro
+      - ./datos:/datos:ro
+      - ./pruebas:/pruebas:ro
+
+  nodo-b-replica-impar:
+    <<: *postgres
+    profiles: ["nodo-b"]
+    container_name: nodo-b-replica-impar
+    user: postgres
+    entrypoint: ["bash", "/scripts/replica.sh"]
+    environment:
+      <<: *entorno
+      REPLICA_NOMBRE: replica_impar
+      PRIMARIO_HOST: ${IMPAR_PRIMARIO_HOST:-nodo-a-primario-impar}
+      PRIMARIO_PUERTO: ${IMPAR_PRIMARIO_PUERTO:-5432}
+    ports: ["${BIND_IP:-127.0.0.1}:${PUERTO_B_REPLICA:-5452}:5432"]
+    volumes:
+      - datos_b_replica_impar:/var/lib/postgresql/data
+      - ./init/replica.sh:/scripts/replica.sh:ro
+      - ./pruebas:/pruebas:ro
+
+volumes:
+  datos_a_primario_impar:
+  datos_a_replica_par:
+  datos_b_primario_par:
+  datos_b_replica_impar:
