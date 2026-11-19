@@ -1,6 +1,6 @@
 # Fragmentos de PostgreSQL y sus réplicas
 
-Issue #17. Responsable: Osvaldo Yair Serna Salazar.
+Issues #17 (fragmentos y réplicas) y #18 (pruebas de falla). Responsable: Osvaldo Yair Serna Salazar.
 
 Aplica la distribución de [docs/distribucion-datos.md](../../docs/distribucion-datos.md) (#3) sobre el esquema de [database/sql](../sql) (#16): usuarios impares en el primario del Nodo A (PC de Luis), pares en el primario del Nodo B (remoto), y cada fragmento con una réplica síncrona en el otro equipo.
 
@@ -113,9 +113,55 @@ El mismo `docker-compose.yml` sirve para los dos equipos con perfiles; solo camb
 
 Las dos computadoras deben usar las **mismas contraseñas** en `.env` (`POSTGRES_PASSWORD` y `REPLICADOR_PASSWORD`); se comparten por un medio privado, nunca en el repositorio.
 
+## Pruebas de falla y recuperación (#18)
+
+```powershell
+.\probar_fallas.ps1
+```
+
+Levanta la simulación desde cero, ejecuta los dos escenarios por separado y guarda la evidencia de saldos, movimientos y operaciones en [evidencia/evidencia_fallas.md](evidencia/evidencia_fallas.md). Debe terminar con `>>> TODAS LAS COMPROBACIONES PASARON`.
+
+### Escenario 1 · Partición de red
+
+Se desconectan de la red los dos contenedores del Nodo B; los cuatro siguen encendidos.
+
+| Operación | Resultado |
+| --- | --- |
+| Consultar saldos (primarios y réplicas) | Confirmada: devuelve el último dato confirmado |
+| Registrar una apuesta (usuario 3 o 4) | **En espera:** el `COMMIT` espera a la réplica del otro nodo y nadie más ve la apuesta |
+| Dar de alta un partido | **En espera**, igual que las apuestas |
+| Escribir en una réplica | Rechazada (solo lectura) |
+| Al reconectar | Las escrituras en espera se confirman solas, las réplicas se ponen al día y los saldos coinciden |
+| Reenviar el mismo borrador | Confirmada sin doble cargo (`es_reenvio = true`, una sola reserva) |
+
+Ningún saldo cambia durante la partición. Esto confirma la postura **CP**: se sacrifica la disponibilidad de escritura para no confirmar nada que no tenga copia.
+
+### Escenario 2 · Caída del primario par y recuperación controlada
+
+Se apaga de golpe `nodo-b-primario-par` (`docker kill`).
+
+| Operación | Resultado |
+| --- | --- |
+| Consultar el saldo del usuario 4 en su réplica | Confirmada |
+| Registrar una apuesta del usuario 4 | Rechazada: no hay primario; la app guarda el borrador |
+| Registrar una apuesta del usuario 3 (fragmento impar) | **Confirmada:** el otro fragmento no se ve afectado |
+
+Procedimiento de recuperación:
+
+1. **Aislar** el primario anterior: queda apagado, sin reinicio automático y desconectado de la red, para que no vuelva como segundo primario (*split-brain*). Su disco ya no se usa.
+2. **Promover** la réplica par del Nodo A: `SELECT pg_promote();`. El directorio de la API debe enviar a los usuarios pares a esa instancia. Hasta tener réplica, el nuevo primario **deja en espera** las escrituras, porque conserva `synchronous_standby_names = 'replica_par'`.
+3. **Resincronizar** el equipo del Nodo B: se reconstruye como `nodo-b-replica-par` con `pg_basebackup` desde el nuevo primario (`SELECT pg_create_physical_replication_slot('replica_par');` antes). Con la copia síncrona al día, la escritura en espera se confirma.
+4. **Avanzar la visibilidad:** `SELECT txid_current();` en el nuevo primario. Sin este paso, la réplica recién copiada trataba como "futura" la transacción que estaba en espera durante la copia y no la mostraba hasta la siguiente escritura. `pg_log_standby_snapshot()` y `CHECKPOINT` no lo resolvieron.
+
+Al final, el fragmento par tiene su primario en el Nodo A y su réplica en el Nodo B, sin datos perdidos ni duplicados, y la suscripción del catálogo continúa en el primario promovido. Regresar el primario al Nodo B (*failback*) sería repetir el mismo procedimiento en sentido contrario.
+
+### Advertencia para la API
+
+Si la API cancela una consulta que espera a la réplica (por ejemplo, por un *timeout* que cancela la sentencia), PostgreSQL avisa que la transacción **ya se confirmó en el primario aunque no se haya replicado**. Por eso la API no debe cancelar esas escrituras: debe responder "pendiente" y dejar que la app reenvíe el borrador con la misma `Idempotency-Key`, que devuelve la apuesta original sin volver a cobrar.
+
 ## Consideraciones y pendientes
 
-- **Escrituras en espera si cae la réplica.** Con replicación síncrona, si el otro equipo se desconecta, el primario deja los `COMMIT` en espera en lugar de confirmar sin copia. Es la postura CP acordada: la app guarda borradores. La promoción controlada de réplicas y la recuperación se prueban en #18.
+- **Escrituras en espera si cae la réplica.** Con replicación síncrona, si el otro equipo se desconecta, el primario deja los `COMMIT` en espera en lugar de confirmar sin copia. Es la postura CP acordada: la app guarda borradores (ver #18).
 - **El catálogo depende del Nodo A.** Si el primario impar no está disponible, no se pueden dar de alta partidos nuevos; los existentes siguen disponibles en el fragmento par.
 - **Alias único entre fragmentos.** Cada fragmento garantiza alias únicos solo entre sus usuarios. Falta acordar con Luis un directorio `alias → usuario_id` para el registro y el login.
 - **Seguridad para el despliegue real.** Limitar `pg_hba.conf` a la subred de la VPN, activar TLS y crear el rol de la API con permiso solo para ejecutar las funciones.
