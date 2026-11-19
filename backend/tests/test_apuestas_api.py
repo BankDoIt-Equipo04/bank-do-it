@@ -92,3 +92,25 @@ def test_dos_apuestas_compiten_por_el_mismo_saldo(demo):
         respuestas = list(pool.map(lambda clave: enviar(cliente, clave, monto="700.00"), ("a", "b")))
     assert sorted(r.status_code for r in respuestas) == [201, 409]
     assert cliente.get(SALDO).json() == {"disponible": "300.00", "en_juego": "700.00"}
+
+
+def test_historial_y_limite_semanal_al_confirmar(demo):
+    cliente, _ = demo
+    url = '/usuarios/3/historial'
+    inicial = cliente.get(url).json()
+    assert inicial['apuestas'] == []
+    assert {p['id'] for p in inicial['partidos']} == {42, 101, 202}
+    assert inicial['presupuesto'] == {'limite_centavos': 50000, 'usado_centavos': 0}
+    assert enviar(cliente, 'primera', monto='450.00', exceso_aceptado='0').status_code == 201
+    rechazo = enviar(cliente, 'segunda', exceso_aceptado='0')
+    assert rechazo.status_code == 409
+    assert rechazo.json()['detail'] == {'exceso_centavos': 5000}
+    assert cliente.get(url).json()['presupuesto']['usado_centavos'] == 45000
+    aceptada = enviar(cliente, 'segunda', exceso_aceptado='50')
+    assert aceptada.status_code == 201
+    assert enviar(cliente, 'segunda', exceso_aceptado='50').status_code == 200
+    final = cliente.get(url).json()
+    assert len(final['apuestas']) == 2
+    assert final['bankroll'] == aceptada.json()['bankroll']
+    assert final['presupuesto']['usado_centavos'] == 55000
+    assert cliente.get('/usuarios/4/historial').json()['apuestas'] == []

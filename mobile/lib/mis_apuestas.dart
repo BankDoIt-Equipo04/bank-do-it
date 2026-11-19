@@ -1,32 +1,49 @@
+import 'api_apuestas.dart';
+import 'editar_apuesta.dart';
+
 import 'package:flutter/material.dart';
 
 const titulo = TextStyle(fontSize: 28, fontWeight: FontWeight.bold);
-const partido = 'Dallas vs. Filadelfia';
+const estados = {
+  'pendiente': 'En curso',
+  'ganada': 'Ganadas',
+  'perdida': 'Perdidas',
+  'anulada': 'Anuladas',
+};
 
 class Resumen extends StatelessWidget {
-  const Resumen({super.key});
+  const Resumen({required this.historial, super.key});
+  final Historial historial;
   @override
   Widget build(BuildContext context) {
-    const cifras = Row(
+    final cifras = Row(
       children: [
-        Expanded(child: _Importe('Saldo disponible', r'$900')),
-        Expanded(child: _Importe('En juego', r'$100')),
+        Expanded(
+          child: _Importe('Saldo disponible', dinero(historial.disponible)),
+        ),
+        Expanded(child: _Importe('En juego', dinero(historial.enJuego))),
       ],
     );
-    const presupuesto = Column(
+    final limite = historial.limite;
+    final presupuesto = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Presupuesto semanal',
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
-        Text(r'$100 de $500'),
-        SizedBox(height: 6),
-        LinearProgressIndicator(
-          value: 0.2,
-          color: Colors.grey,
-          backgroundColor: Color(0xffdddddd),
+        Text(
+          limite == null
+              ? 'Sin límite semanal'
+              : '${dinero(decimal(historial.usado))} de ${dinero(decimal(limite))}',
         ),
+        SizedBox(height: 6),
+        if (limite != null && limite > 0)
+          LinearProgressIndicator(
+            value: (historial.usado / limite).clamp(0, 1),
+            color: Colors.grey,
+            backgroundColor: Color(0xffdddddd),
+          ),
       ],
     );
     Widget panel(Widget child) => Container(
@@ -48,7 +65,7 @@ class Resumen extends StatelessWidget {
               ],
             )
           : panel(
-              const Row(
+              Row(
                 children: [
                   Expanded(flex: 2, child: cifras),
                   Expanded(child: presupuesto),
@@ -73,8 +90,17 @@ class _Importe extends StatelessWidget {
 }
 
 class MisApuestas extends StatefulWidget {
-  const MisApuestas({required this.movil, super.key});
+  const MisApuestas({
+    required this.movil,
+    required this.api,
+    required this.historial,
+    required this.actualizar,
+    super.key,
+  });
   final bool movil;
+  final ApiApuestas api;
+  final Historial historial;
+  final VoidCallback actualizar;
   @override
   State<MisApuestas> createState() => _MisApuestasState();
 }
@@ -82,17 +108,25 @@ class MisApuestas extends StatefulWidget {
 class _MisApuestasState extends State<MisApuestas> {
   int seleccion = 0;
 
-  void abrir(Widget pagina) =>
-      Navigator.of(context)
-          .push(MaterialPageRoute<void>(builder: (_) => pagina));
+  Future<void> abrir(Widget pagina) async {
+    final cambio = await Navigator.of(context)
+        .push<bool>(MaterialPageRoute(builder: (_) => pagina));
+    if (cambio == true && mounted) widget.actualizar();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final h = widget.historial;
+    final filtros = estados.entries.toList();
+    final visibles = h.apuestas.where(
+      (a) => a['estado'] == filtros[seleccion].key,
+    );
     final registrar = FilledButton(
-      onPressed: () => abrir(const Registro()),
+      onPressed: () => abrir(Registro(api: widget.api, historial: h)),
       child: const Text('+ Registrar apuesta'),
     );
-    void detalle() => abrir(const Detalle());
+    void detalle(Json a) =>
+        abrir(Detalle(api: widget.api, apuesta: a, partido: h.encuentro(a)));
     return LayoutBuilder(
       builder: (context, limites) {
         final estrecho = limites.maxWidth < 520;
@@ -109,21 +143,22 @@ class _MisApuestasState extends State<MisApuestas> {
                       const Expanded(
                         child: Text('Mis apuestas', style: titulo),
                       ),
+                      IconButton(
+                        onPressed: widget.actualizar,
+                        tooltip: 'Actualizar historial',
+                        icon: const Icon(Icons.refresh),
+                      ),
                       if (!botonAlPie) registrar,
                     ],
                   ),
                   const SizedBox(height: 20),
-                  const Resumen(),
+                  Resumen(historial: h),
                   const SizedBox(height: 20),
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       children: [
-                        for (final (i, etiqueta) in [
-                          'En curso (1)',
-                          'Ganadas (0)',
-                          'Perdidas (0)',
-                        ].indexed)
+                        for (final (i, filtro) in filtros.indexed)
                           Semantics(
                             selected: seleccion == i,
                             child: TextButton(
@@ -142,7 +177,9 @@ class _MisApuestasState extends State<MisApuestas> {
                                     ),
                                   ),
                                 ),
-                                child: Text(etiqueta),
+                                child: Text(
+                                  '${filtro.value} (${h.apuestas.where((a) => a["estado"] == filtro.key).length})',
+                                ),
                               ),
                             ),
                           ),
@@ -151,26 +188,27 @@ class _MisApuestasState extends State<MisApuestas> {
                   ),
                   const Divider(height: 1),
                   const SizedBox(height: 16),
-                  if (seleccion != 0)
+                  if (visibles.isEmpty)
                     Text(
-                      seleccion == 1
-                          ? 'Sin apuestas ganadas.'
-                          : 'Sin apuestas perdidas.',
+                      seleccion == 0
+                          ? 'Sin apuestas en curso.'
+                          : 'Sin apuestas ${filtros[seleccion].value.toLowerCase()}.',
                     )
                   else if (widget.movil)
-                    Card.outlined(
-                      child: ListTile(
-                        onTap: detalle,
-                        title: const Text(
-                          partido,
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                    for (final a in visibles)
+                      Card.outlined(
+                        child: ListTile(
+                          onTap: () => detalle(a),
+                          title: Text(
+                            h.encuentro(a),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Text(
+                            'Selección: ${a["seleccion"]} · Monto: ${dinero(a["monto"])} · Cuota: ${a["cuota"]}',
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
                         ),
-                        subtitle: const Text(
-                          'Selección: Dallas\nMonto: \$100   ·   Cuota: 2.00',
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                      ),
-                    )
+                      )
                   else
                     LayoutBuilder(
                       builder: (_, area) => SingleChildScrollView(
@@ -194,20 +232,21 @@ class _MisApuestasState extends State<MisApuestas> {
                                 DataColumn(label: Text(col)),
                             ],
                             rows: [
-                              DataRow(
-                                cells: [
-                                  const DataCell(Text(partido)),
-                                  const DataCell(Text('Dallas')),
-                                  const DataCell(Text(r'$100')),
-                                  const DataCell(Text('2.00')),
-                                  DataCell(
-                                    TextButton(
-                                      onPressed: detalle,
-                                      child: const Text('Ver detalle'),
+                              for (final a in visibles)
+                                DataRow(
+                                  cells: [
+                                    DataCell(Text(h.encuentro(a))),
+                                    DataCell(Text(a['seleccion'])),
+                                    DataCell(Text(dinero(a['monto']))),
+                                    DataCell(Text(a['cuota'])),
+                                    DataCell(
+                                      TextButton(
+                                        onPressed: () => detalle(a),
+                                        child: const Text('Ver detalle'),
+                                      ),
                                     ),
-                                  ),
-                                ],
-                              ),
+                                  ],
+                                ),
                             ],
                           ),
                         ),
@@ -223,66 +262,4 @@ class _MisApuestasState extends State<MisApuestas> {
       },
     );
   }
-}
-
-class Registro extends StatelessWidget {
-  const Registro({super.key});
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Registrar apuesta')),
-    body: SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          for (final campo in [
-            'Deporte',
-            'Partido',
-            'Selección',
-            'Monto',
-            'Cuota',
-          ])
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: TextField(
-                decoration: InputDecoration(labelText: campo),
-                keyboardType: campo == 'Monto' || campo == 'Cuota'
-                    ? const TextInputType.numberWithOptions(decimal: true)
-                    : TextInputType.text,
-              ),
-            ),
-          OutlinedButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-class Detalle extends StatelessWidget {
-  const Detalle({super.key});
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Detalle de apuesta')),
-    body: ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        const Text(partido, style: titulo),
-        const SizedBox(height: 16),
-        for (final dato in const [
-          ('Estado', 'En curso'),
-          ('Deporte', 'Fútbol americano'),
-          ('Selección', 'Dallas'),
-          ('Monto', r'$100'),
-          ('Cuota', '2.00'),
-        ])
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(dato.$1),
-            trailing: Text(dato.$2),
-          ),
-      ],
-    ),
-  );
 }

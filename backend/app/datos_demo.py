@@ -36,8 +36,17 @@ def preparar(ruta: Path) -> None:
                 PRIMARY KEY (apuesta_id, tipo)
             );
         """)
+        # La demo anterior no guardaba fechas: se conserva su historial sin
+        # atribuir operaciones antiguas a la semana actual.
+        columnas = {c[1] for c in db.execute("PRAGMA table_info(apuesta)")}
+        if "creada" not in columnas:
+            db.execute("ALTER TABLE apuesta ADD COLUMN creada TEXT")
+        db.execute("""CREATE TABLE IF NOT EXISTS presupuesto (
+            usuario_id INTEGER PRIMARY KEY REFERENCES bankroll(usuario_id),
+            limite INTEGER NOT NULL CHECK (limite >= 0))""")
         db.executemany("INSERT OR IGNORE INTO bankroll VALUES (?, ?)",
                        [(3, 100000), (4, 80000)])
+        db.execute("INSERT OR IGNORE INTO presupuesto VALUES (3, 50000)")
         db.executemany("INSERT OR IGNORE INTO partido VALUES (?)", [(42,), (101,), (202,)])
 
 

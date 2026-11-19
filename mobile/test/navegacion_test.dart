@@ -1,3 +1,8 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:bankdoit/api_apuestas.dart';
 import 'package:bankdoit/main.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -40,7 +45,42 @@ void main() {
         tester.view.physicalSize = Size(movil ? 390 : 1000, 800);
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
-        await tester.pumpWidget(const BankDoItApp());
+        final cliente = MockClient(
+          (_) async => http.Response.bytes(
+            utf8.encode(
+              jsonEncode({
+                'bankroll': {'disponible': '900.00', 'en_juego': '100.00'},
+                'presupuesto': {
+                  'usado_centavos': 10000,
+                  'limite_centavos': 50000,
+                },
+                'partidos': [
+                  {
+                    'id': 42,
+                    'local': 'Dallas',
+                    'visitante': 'Filadelfia',
+                    'deporte': 'Fútbol americano',
+                  },
+                ],
+                'apuestas': [
+                  {
+                    'id': 1,
+                    'partido_id': 42,
+                    'seleccion': 'Dallas',
+                    'monto': '100.00',
+                    'cuota': '2.00',
+                    'estado': 'pendiente',
+                  },
+                ],
+              }),
+            ),
+            200,
+          ),
+        );
+        await tester.pumpWidget(
+          BankDoItApp(api: ApiApuestas(cliente: cliente)),
+        );
+        await tester.pumpAndSettle();
         expect(find.text('Mis apuestas'), findsOneWidget);
         expect(
           find.byType(BottomNavigationBar),

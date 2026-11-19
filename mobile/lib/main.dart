@@ -2,11 +2,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'mis_apuestas.dart';
+import 'api_apuestas.dart';
 
 void main() => runApp(const BankDoItApp());
 
 class BankDoItApp extends StatelessWidget {
-  const BankDoItApp({super.key});
+  const BankDoItApp({this.api, super.key});
+  final ApiApuestas? api;
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +26,7 @@ class BankDoItApp extends StatelessWidget {
           border: OutlineInputBorder(),
         ),
       ),
-      home: const Principal(),
+      home: Principal(api: api),
     );
   }
 }
@@ -61,12 +63,24 @@ class Marca extends StatelessWidget {
 }
 
 class Principal extends StatefulWidget {
-  const Principal({super.key});
+  const Principal({required this.api, super.key});
+  final ApiApuestas? api;
   @override
   State<Principal> createState() => _PrincipalState();
 }
 
 class _PrincipalState extends State<Principal> {
+  late final api = widget.api ?? ApiApuestas();
+  late Future<Historial> carga = api.cargar();
+  void actualizar() => setState(() {
+    carga = api.cargar();
+  });
+  @override
+  void dispose() {
+    if (widget.api == null) api.cliente.close();
+    super.dispose();
+  }
+
   Seccion actual = Seccion.apuestas;
 
   @override
@@ -77,23 +91,55 @@ class _PrincipalState extends State<Principal> {
             defaultTargetPlatform == TargetPlatform.iOS);
     final secciones = Seccion.values;
     void seleccionar(int i) => setState(() => actual = secciones[i]);
-    final contenido = IndexedStack(
-      index: actual.index,
-      children: [
-        MisApuestas(movil: movil),
-        const ListViewBankroll(),
-        const Padding(
-          padding: EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Estadísticas', style: titulo),
-              SizedBox(height: 20),
-              Text('Aún no hay apuestas resueltas.'),
-            ],
-          ),
-        ),
-      ],
+    final contenido = FutureBuilder<Historial>(
+      future: carga,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(snapshot.error.toString(), textAlign: TextAlign.center),
+                OutlinedButton(
+                  onPressed: actualizar,
+                  child: const Text('Reintentar'),
+                ),
+              ],
+            ),
+          );
+        }
+        final historial = snapshot.requireData;
+        return IndexedStack(
+          index: actual.index,
+          children: [
+            MisApuestas(
+              movil: movil,
+              api: api,
+              historial: historial,
+              actualizar: actualizar,
+            ),
+            ListViewBankroll(historial: historial),
+            Padding(
+              padding: EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Estadísticas', style: titulo),
+                  const SizedBox(height: 20),
+                  Text(
+                    historial.apuestas.every((a) => a['estado'] == 'pendiente')
+                        ? 'Aún no hay apuestas resueltas.'
+                        : 'Apuestas resueltas: ${historial.apuestas.where((a) => a["estado"] != "pendiente").length}.',
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
     final superior = kIsWeb || movil;
     return Scaffold(
@@ -178,14 +224,15 @@ class _PrincipalState extends State<Principal> {
 }
 
 class ListViewBankroll extends StatelessWidget {
-  const ListViewBankroll({super.key});
+  const ListViewBankroll({required this.historial, super.key});
+  final Historial historial;
   @override
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.all(24),
-    children: const [
-      Text('Bankroll', style: titulo),
+    children: [
+      const Text('Bankroll', style: titulo),
       SizedBox(height: 16),
-      Resumen(),
+      Resumen(historial: historial),
     ],
   );
 }
