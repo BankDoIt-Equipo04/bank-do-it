@@ -1,7 +1,7 @@
 """Base local reproducible para probar la API con datos simulados."""
+import sqlite3
 from contextlib import closing
 from pathlib import Path
-import sqlite3
 
 
 def ruta_demo() -> Path:

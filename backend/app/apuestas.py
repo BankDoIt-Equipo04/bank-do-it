@@ -1,15 +1,15 @@
-from contextlib import closing, contextmanager
-from decimal import Decimal, ROUND_HALF_UP
-from pathlib import Path
 import sqlite3
+from contextlib import closing, contextmanager
+from decimal import ROUND_HALF_UP, Decimal
+from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Path as PathParam, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from fastapi import Path as PathParam
 from pydantic import BaseModel, Field, StringConstraints
 
 from .bankroll import Bankroll, SaldoInsuficienteError
 from .datos_demo import ruta_demo
-
 
 router = APIRouter(prefix="/usuarios/{usuario_id}", tags=["Apuestas"])
 Identificador = Annotated[int, PathParam(gt=0, le=2**63 - 1)]
