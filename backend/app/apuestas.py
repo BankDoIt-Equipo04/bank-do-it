@@ -1,0 +1,131 @@
+from contextlib import closing, contextmanager
+from decimal import Decimal, ROUND_HALF_UP
+from pathlib import Path
+import sqlite3
+from typing import Annotated, Literal
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Path as PathParam, Response
+from pydantic import BaseModel, Field, StringConstraints
+
+from .bankroll import Bankroll, SaldoInsuficienteError
+from .datos_demo import ruta_demo
+
+
+router = APIRouter(prefix="/usuarios/{usuario_id}", tags=["Apuestas"])
+Identificador = Annotated[int, PathParam(gt=0, le=2**63 - 1)]
+Ruta = Annotated[Path, Depends(ruta_demo)]
+Clave = Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=128,
+                              pattern=r"^[!-~]+$")]
+Resultado = Literal["ganada", "perdida", "anulada"]
+CENTAVO = Decimal("0.01")
+
+
+class NuevaApuesta(BaseModel):
+    partido_id: int = Field(gt=0, le=2**63 - 1)
+    seleccion: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=180)]
+    monto: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
+    cuota: Decimal = Field(gt=1, max_digits=6, decimal_places=2)
+
+
+class Resolucion(BaseModel):
+    resultado: Resultado
+
+
+@contextmanager
+def transaccion(ruta: Path, *, escritura: bool = False):
+    if not ruta.is_file():
+        raise HTTPException(503, "Primero ejecuta python -m app.datos_demo.")
+    with closing(sqlite3.connect(ruta, timeout=5)) as db:
+        db.row_factory = sqlite3.Row
+        db.execute("PRAGMA foreign_keys = ON")
+        try:
+            with db:
+                db.execute("BEGIN IMMEDIATE" if escritura else "BEGIN")
+                yield db
+        except sqlite3.OperationalError as error:
+            if error.sqlite_errorcode in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED):
+                raise HTTPException(503, "Base ocupada. Reintenta con la misma clave.") from error
+            raise
+
+
+def obtener_saldo(db, usuario_id):
+    fila = db.execute("""
+        SELECT b.inicial + COALESCE(SUM(m.cambio_disponible), 0) AS disponible,
+               COALESCE(SUM(m.cambio_en_juego), 0) AS en_juego
+        FROM bankroll b LEFT JOIN apuesta a ON a.usuario_id = b.usuario_id
+        LEFT JOIN movimiento m ON m.apuesta_id = a.id
+        WHERE b.usuario_id = ? GROUP BY b.usuario_id
+    """, (usuario_id,)).fetchone()
+    if fila is None:
+        raise HTTPException(404, "Usuario sin bankroll.")
+    return Bankroll(Decimal(fila["disponible"]) * CENTAVO, Decimal(fila["en_juego"]) * CENTAVO)
+
+
+def saldos(saldo):
+    return {"disponible": format(saldo.disponible, ".2f"), "en_juego": format(saldo.en_juego, ".2f")}
+
+
+def respuesta(db, usuario_id, apuesta_id):
+    fila = db.execute("SELECT id, partido_id, seleccion, monto, cuota, estado FROM apuesta "
+                      "WHERE usuario_id = ? AND id = ?", (usuario_id, apuesta_id)).fetchone()
+    apuesta = dict(fila)
+    apuesta["monto"] = format(Decimal(fila["monto"]) * CENTAVO, ".2f")
+    return {"apuesta": apuesta, "bankroll": saldos(obtener_saldo(db, usuario_id))}
+
+
+@router.get("/bankroll")
+def consultar(usuario_id: Identificador, ruta: Ruta):
+    with transaccion(ruta) as db:
+        return saldos(obtener_saldo(db, usuario_id))
+
+
+@router.post("/apuestas", status_code=201)
+def registrar(usuario_id: Identificador, datos: NuevaApuesta, clave: Clave, ruta: Ruta, response: Response):
+    monto = int(datos.monto * 100)
+    cuota = format(datos.cuota, ".2f")
+    with transaccion(ruta, escritura=True) as db:
+        previa = db.execute("SELECT * FROM apuesta WHERE usuario_id = ? AND clave = ?",
+                            (usuario_id, clave)).fetchone()
+        if previa:
+            original = (previa["partido_id"], previa["seleccion"], previa["monto"], previa["cuota"])
+            if original != (datos.partido_id, datos.seleccion, monto, cuota):
+                raise HTTPException(409, "clave_reutilizada")
+            response.status_code = 200
+            return respuesta(db, usuario_id, previa["id"])
+
+        saldo = obtener_saldo(db, usuario_id)
+        if not db.execute("SELECT 1 FROM partido WHERE id = ?", (datos.partido_id,)).fetchone():
+            raise HTTPException(404, "Partido inexistente.")
+        try:
+            saldo.reservar(datos.monto)
+        except SaldoInsuficienteError as error:
+            raise HTTPException(409, "saldo_insuficiente") from error
+        apuesta_id = db.execute("""
+            INSERT INTO apuesta (usuario_id, clave, partido_id, seleccion, monto, cuota, estado)
+            VALUES (?, ?, ?, ?, ?, ?, 'pendiente')
+        """, (usuario_id, clave, datos.partido_id, datos.seleccion, monto, cuota)).lastrowid
+        db.execute("INSERT INTO movimiento VALUES (?, 'reserva', ?, ?)", (apuesta_id, -monto, monto))
+        return respuesta(db, usuario_id, apuesta_id)
+
+
+@router.put("/apuestas/{apuesta_id}/resultado")
+def resolver(usuario_id: Identificador, apuesta_id: Identificador, datos: Resolucion, ruta: Ruta):
+    with transaccion(ruta, escritura=True) as db:
+        fila = db.execute("SELECT estado, monto, cuota FROM apuesta WHERE usuario_id = ? AND id = ?",
+                          (usuario_id, apuesta_id)).fetchone()
+        if fila is None:
+            raise HTTPException(404, "Apuesta inexistente.")
+        if fila["estado"] == datos.resultado:
+            return respuesta(db, usuario_id, apuesta_id)
+        if fila["estado"] != "pendiente":
+            raise HTTPException(409, "resultado_en_conflicto")
+
+        monto = fila["monto"]  # Centavos.
+        retorno = 0
+        if datos.resultado == "ganada":
+            retorno = int((monto * Decimal(fila["cuota"])).to_integral_value(rounding=ROUND_HALF_UP))
+        elif datos.resultado == "anulada":
+            retorno = monto
+        db.execute("UPDATE apuesta SET estado = ? WHERE id = ?", (datos.resultado, apuesta_id))
+        db.execute("INSERT INTO movimiento VALUES (?, 'liquidacion', ?, ?)", (apuesta_id, retorno, -monto))
+        return respuesta(db, usuario_id, apuesta_id)
