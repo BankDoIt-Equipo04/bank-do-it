@@ -37,4 +37,4 @@ fi
 
 # cluster_name también es el application_name con el que el primario
 # reconoce a esta réplica como síncrona.
-exec postgres -c hot_standby=on -c cluster_name="$REPLICA_NOMBRE"
+exec postgres -c hot_standby=on -c cluster_name="$REPLICA_NOMBRE" -c wal_receiver_timeout=10s

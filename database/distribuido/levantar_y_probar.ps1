@@ -23,7 +23,7 @@ $A_REPL = 'nodo-a-replica-par'
 $B_PRIM = 'nodo-b-primario-par'
 $B_REPL = 'nodo-b-replica-impar'
 $todos  = @($A_PRIM, $B_REPL, $B_PRIM, $A_REPL)
-$perfiles = @('--profile', 'nodo-a', '--profile', 'nodo-b')
+$perfiles = @('--profile', 'nodo-a', '--profile', 'nodo-b', '--profile', 'recuperacion')
 $script:fallos = 0
 
 function Titulo($texto) { Write-Host ''; Write-Host "== $texto ==" -ForegroundColor Cyan }
@@ -179,7 +179,7 @@ Write-Host ''
 if ($script:fallos -eq 0) {
     Write-Host '>>> TODAS LAS COMPROBACIONES PASARON' -ForegroundColor Green
     Write-Host 'Los cuatro contenedores siguen arriba para revisarlos (puertos 5441, 5442, 5451, 5452).'
-    Write-Host 'Para apagarlos: docker compose --profile nodo-a --profile nodo-b down'
+    Write-Host 'Para apagarlos: docker compose --profile nodo-a --profile nodo-b --profile recuperacion down'
     exit 0
 }
 Write-Host ">>> $($script:fallos) comprobación(es) fallaron" -ForegroundColor Red
