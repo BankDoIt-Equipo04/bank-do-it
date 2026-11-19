@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 
 import 'api_apuestas.dart';
 import 'recuerdo.dart';
+import 'borradores.dart';
 
 class Registro extends StatefulWidget {
-  const Registro({super.key, required this.api, required this.historial});
-  final ApiApuestas api;
+  const Registro({
+    super.key,
+    required this.borradores,
+    required this.historial,
+  });
+  final Borradores borradores;
   final Historial historial;
   @override
   State<Registro> createState() => _RegistroState();
@@ -19,7 +24,7 @@ class _RegistroState extends State<Registro> {
   String busqueda = '', clave = ApiApuestas.nuevaClave();
   Partido? elegido;
   bool enviando = false;
-  Json? pendiente;
+
   String? error;
 
   @override
@@ -61,16 +66,14 @@ class _RegistroState extends State<Registro> {
     try {
       final importe = centavos(monto.text)!;
       final limite = widget.historial.limite;
-      final datos =
-          pendiente ??
-          <String, dynamic>{
-            'partido_id': elegido!.id,
-            'seleccion': seleccion.text.trim(),
-            'monto': decimal(importe),
-            'cuota': decimal(centavos(cuota.text)!),
-            'exceso_aceptado': '0.00',
-          };
-      if (pendiente == null && limite != null) {
+      final datos = <String, dynamic>{
+        'partido_id': elegido!.id,
+        'seleccion': seleccion.text.trim(),
+        'monto': decimal(importe),
+        'cuota': decimal(centavos(cuota.text)!),
+        'exceso_aceptado': '0.00',
+      };
+      if (limite != null) {
         final exceso = widget.historial.usado + importe - limite;
         if (exceso > 0) {
           if (!await confirmar(exceso)) return;
@@ -79,13 +82,23 @@ class _RegistroState extends State<Registro> {
       }
       while (mounted) {
         try {
-          pendiente = datos;
-          await widget.api.registrar(datos, clave);
+          final b = {
+            'clave': clave,
+            'datos': datos,
+            'creado': DateTime.now().toUtc().toIso8601String(),
+          };
+          await widget.borradores.guardar(b);
+          await widget.borradores.enviar(b);
           if (mounted) Navigator.pop(context, true);
           return;
         } on FalloApi catch (e) {
           if (!mounted) return;
-          if (!e.reintentar) pendiente = null;
+          if (e.reintentar) {
+            Navigator.pop(context, true);
+            return;
+          }
+          await widget.borradores.quitar(clave);
+          if (!mounted) return;
           final exceso = e.exceso;
           if (exceso == null) {
             setState(() => error = e.mensaje);
@@ -102,7 +115,7 @@ class _RegistroState extends State<Registro> {
 
   @override
   Widget build(BuildContext context) {
-    final editable = !enviando && pendiente == null;
+    final editable = !enviando;
     final partidos = widget.historial.partidos
         .where((p) => p.nombre.toLowerCase().contains(busqueda.toLowerCase()))
         .toList();
@@ -193,16 +206,12 @@ class _RegistroState extends State<Registro> {
                 const SizedBox(height: 16),
                 FilledButton(
                   onPressed: enviando ? null : guardar,
-                  child: Text(
-                    pendiente == null
-                        ? 'Guardar apuesta'
-                        : 'Reintentar registro',
-                  ),
+                  child: Text('Guardar apuesta'),
                 ),
                 TextButton(
                   onPressed: enviando
                       ? null
-                      : () => Navigator.pop(context, pendiente != null),
+                      : () => Navigator.pop(context, false),
                   child: const Text('Cancelar'),
                 ),
               ],

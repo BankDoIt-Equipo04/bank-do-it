@@ -31,8 +31,10 @@ class Partido {
 }
 
 class Historial {
+  final Json datos;
   Historial(Json j)
-    : disponible = j['bankroll']['disponible'],
+    : datos = j,
+      disponible = j['bankroll']['disponible'],
       enJuego = j['bankroll']['en_juego'],
       usado = j['presupuesto']['usado_centavos'],
       limite = j['presupuesto']['limite_centavos'],
@@ -93,7 +95,9 @@ class ApiApuestas {
           .send(req)
           .then(http.Response.fromStream)
           .timeout(const Duration(seconds: 15));
-      if (res.statusCode >= 500) {
+      if (res.statusCode >= 500 ||
+          res.statusCode == 408 ||
+          res.statusCode == 429) {
         throw FalloApi(
           'La API no pudo confirmar la operación. Reintenta.',
           reintentar: true,
@@ -164,9 +168,8 @@ class ApiApuestas {
 
   Future<Historial> cargar() async =>
       Historial(await _enviar('GET', 'historial'));
-  Future<void> registrar(Json datos, String clave) async {
-    await _enviar('POST', 'apuestas', datos: datos, clave: clave);
-  }
+  Future<Json> registrar(Json datos, String clave) =>
+      _enviar('POST', 'apuestas', datos: datos, clave: clave);
 
   Future<void> resolver(int id, String resultado) async {
     await _enviar(

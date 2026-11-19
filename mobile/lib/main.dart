@@ -1,3 +1,7 @@
+import 'dart:async';
+
+import 'borradores.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -71,12 +75,47 @@ class Principal extends StatefulWidget {
 
 class _PrincipalState extends State<Principal> {
   late final api = widget.api ?? ApiApuestas();
-  late Future<Historial> carga = api.cargar();
-  void actualizar() => setState(() {
-    carga = api.cargar();
-  });
+  late final borradores = Borradores(api);
+  late Future<Historial> carga;
+  Timer? reintento;
+  bool ocupado = false, abierto = false;
+  @override
+  void initState() {
+    super.initState();
+    carga = iniciar();
+    reintento = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (abierto &&
+          !ocupado &&
+          ModalRoute.of(context)?.isCurrent == true &&
+          (borradores.saldoPorActualizar ||
+              borradores.lista.any((b) => b['error'] == null))) {
+        actualizar();
+      }
+    });
+  }
+
+  Future<Historial> iniciar() async {
+    await borradores.abrir();
+    abierto = true;
+    return consultar();
+  }
+
+  Future<Historial> consultar() async {
+    ocupado = true;
+    try {
+      return await borradores.actualizar();
+    } finally {
+      ocupado = false;
+    }
+  }
+
+  void actualizar() {
+    if (!ocupado) setState(() => carga = abierto ? consultar() : iniciar());
+  }
+
   @override
   void dispose() {
+    reintento?.cancel();
     if (widget.api == null) api.cliente.close();
     super.dispose();
   }
@@ -94,7 +133,8 @@ class _PrincipalState extends State<Principal> {
     final contenido = FutureBuilder<Historial>(
       future: carga,
       builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
+        if (snapshot.connectionState != ConnectionState.done &&
+            !snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
@@ -116,6 +156,7 @@ class _PrincipalState extends State<Principal> {
           index: actual.index,
           children: [
             MisApuestas(
+              borradores: borradores,
               movil: movil,
               api: api,
               historial: historial,
