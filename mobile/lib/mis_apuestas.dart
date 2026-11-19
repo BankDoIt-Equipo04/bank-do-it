@@ -1,3 +1,4 @@
+import 'borradores.dart';
 import 'api_apuestas.dart';
 import 'editar_apuesta.dart';
 
@@ -91,12 +92,14 @@ class _Importe extends StatelessWidget {
 
 class MisApuestas extends StatefulWidget {
   const MisApuestas({
+    required this.borradores,
     required this.movil,
     required this.api,
     required this.historial,
     required this.actualizar,
     super.key,
   });
+  final Borradores borradores;
   final bool movil;
   final ApiApuestas api;
   final Historial historial;
@@ -117,12 +120,17 @@ class _MisApuestasState extends State<MisApuestas> {
   @override
   Widget build(BuildContext context) {
     final h = widget.historial;
+    final local = widget.borradores;
+    final fecha = local.ultimaConsulta;
+    final formato = MaterialLocalizations.of(context);
+
     final filtros = estados.entries.toList();
     final visibles = h.apuestas.where(
       (a) => a['estado'] == filtros[seleccion].key,
     );
     final registrar = FilledButton(
-      onPressed: () => abrir(Registro(api: widget.api, historial: h)),
+      onPressed: () =>
+          abrir(Registro(borradores: widget.borradores, historial: h)),
       child: const Text('+ Registrar apuesta'),
     );
     void detalle(Json a) =>
@@ -153,6 +161,53 @@ class _MisApuestasState extends State<MisApuestas> {
                   ),
                   const SizedBox(height: 20),
                   Resumen(historial: h),
+                  if (fecha != null)
+                    Text(
+                      'Última sincronización del saldo: ${formato.formatShortDate(fecha)} ${formato.formatTimeOfDay(TimeOfDay.fromDateTime(fecha))}',
+                    ),
+                  if (local.aviso != null) Text(local.aviso!),
+                  for (final b in local.lista)
+                    ListTile(
+                      title: Text(
+                        'Borrador · ${b['datos']['seleccion']} · ${dinero(b['datos']['monto'])}',
+                      ),
+                      subtitle: Text(
+                        b['exceso'] != null
+                            ? 'La API solicita aceptar un exceso de ${dinero(decimal(b['exceso']))}.'
+                            : b['error'] ?? 'Pendiente de sincronizar',
+                      ),
+                      trailing: b['error'] == null
+                          ? null
+                          : Wrap(
+                              children: [
+                                if (b['exceso'] != null)
+                                  TextButton(
+                                    child: const Text('Aceptar exceso'),
+                                    onPressed: () async {
+                                      await local.guardar({
+                                        ...b,
+                                        'error': null,
+                                        'exceso': null,
+                                        'datos': {
+                                          ...b['datos'],
+                                          'exceso_aceptado': decimal(
+                                            b['exceso'],
+                                          ),
+                                        },
+                                      });
+                                      if (mounted) widget.actualizar();
+                                    },
+                                  ),
+                                TextButton(
+                                  child: const Text('Descartar'),
+                                  onPressed: () async {
+                                    await local.quitar(b['clave']);
+                                    if (mounted) widget.actualizar();
+                                  },
+                                ),
+                              ],
+                            ),
+                    ),
                   const SizedBox(height: 20),
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,

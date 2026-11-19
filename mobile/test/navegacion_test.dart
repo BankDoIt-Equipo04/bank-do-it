@@ -1,3 +1,5 @@
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -38,6 +40,7 @@ void main() {
     testWidgets('Recorridos en ${kIsWeb ? "web" : plataforma.name}', (
       tester,
     ) async {
+      SharedPreferences.setMockInitialValues({});
       debugDefaultTargetPlatformOverride = plataforma;
       try {
         final movil = !kIsWeb && plataforma == TargetPlatform.android;
