@@ -1,13 +1,12 @@
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
-import sqlite3
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.datos_demo import preparar, ruta_demo
 from app.main import app
-
 
 URL = "/usuarios/3/apuestas"
 SALDO = "/usuarios/3/bankroll"
