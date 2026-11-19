@@ -1,0 +1,28 @@
+# BANKDOIT · PostgreSQL local para desarrollo y pruebas (#16).
+# Al crear el volumen por primera vez, PostgreSQL ejecuta en orden los
+# scripts de ./sql (01_esquema, 02_funciones_triggers, 03_datos_prueba).
+# La configuración de fragmentos y réplicas llega en #17.
+services:
+  postgres:
+    image: postgres:16.4
+    container_name: bankdoit-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bankdoit}
+      POSTGRES_USER: ${POSTGRES_USER:-bankdoit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Copia .env.example a .env y define POSTGRES_PASSWORD}
+      TZ: America/Mexico_City
+      PGTZ: America/Mexico_City
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - bankdoit_pgdata:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d:ro
+      - ./pruebas:/pruebas:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  bankdoit_pgdata:
