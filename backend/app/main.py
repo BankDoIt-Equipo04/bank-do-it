@@ -1,7 +1,9 @@
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from .apuestas import router
+from .recuerdos import router as recuerdos
 
 app = FastAPI(
     title="BANKDOIT API",
@@ -9,7 +11,14 @@ app = FastAPI(
     description="Sistema de gestión de apuestas deportivas simuladas"
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:[0-9]+)?",
+    allow_methods=["GET", "POST", "PUT"],
+    allow_headers=["Content-Type", "Idempotency-Key"],
+)
 app.include_router(router)
+app.include_router(recuerdos)
 
 
 @app.get("/health")

@@ -21,6 +21,8 @@ CENTAVO = Decimal("0.01")
 
 
 class NuevaApuesta(BaseModel):
+    # Opcional para mantener el contrato de los clientes anteriores.
+    exceso_aceptado: Decimal | None = Field(default=None, ge=0, decimal_places=2)
     partido_id: int = Field(gt=0, le=2**63 - 1)
     seleccion: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=180)]
     monto: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
@@ -73,6 +75,39 @@ def respuesta(db, usuario_id, apuesta_id):
     return {"apuesta": apuesta, "bankroll": saldos(obtener_saldo(db, usuario_id))}
 
 
+CATALOGO_DEMO = {
+    42: ("Fútbol", "Chivas", "América"),
+    101: ("Fútbol", "América", "Chivas"),
+    202: ("Fútbol americano", "Chiefs", "Eagles"),
+}
+
+
+def presupuesto(db, usuario_id):
+    # Semana del servidor local, de lunes a domingo (incluye apuestas resueltas).
+    limite = db.execute("SELECT limite FROM presupuesto WHERE usuario_id = ?",
+                        (usuario_id,)).fetchone()
+    usado = db.execute("""
+        SELECT COALESCE(SUM(monto), 0) FROM apuesta
+        WHERE usuario_id = ? AND date(creada, 'localtime') >=
+              date('now', 'localtime', '-6 days', 'weekday 1')
+    """, (usuario_id,)).fetchone()[0]
+    return {"limite_centavos": limite[0] if limite else None, "usado_centavos": usado}
+
+
+@router.get("/historial")
+def historial(usuario_id: Identificador, ruta: Ruta):
+    with transaccion(ruta) as db:
+        saldo = saldos(obtener_saldo(db, usuario_id))
+        filas = db.execute("SELECT id, partido_id, seleccion, monto, cuota, estado FROM apuesta "
+                           "WHERE usuario_id = ? ORDER BY id DESC", (usuario_id,))
+        apuestas = [dict(row) | {"monto": format(Decimal(row["monto"]) * CENTAVO, ".2f")}
+                    for row in filas]
+        partidos = [{"id": i, "deporte": deporte, "local": local, "visitante": visitante}
+                    for i, (deporte, local, visitante) in CATALOGO_DEMO.items()]
+        return {"bankroll": saldo, "presupuesto": presupuesto(db, usuario_id),
+                "apuestas": apuestas, "partidos": partidos}
+
+
 @router.get("/bankroll")
 def consultar(usuario_id: Identificador, ruta: Ruta):
     with transaccion(ruta) as db:
@@ -100,9 +135,16 @@ def registrar(usuario_id: Identificador, datos: NuevaApuesta, clave: Clave, ruta
             saldo.reservar(datos.monto)
         except SaldoInsuficienteError as error:
             raise HTTPException(409, "saldo_insuficiente") from error
+        if datos.exceso_aceptado is not None:
+            semana = presupuesto(db, usuario_id)
+            limite = semana["limite_centavos"]
+            if limite is not None:
+                exceso = semana["usado_centavos"] + monto - limite
+                if exceso > int(datos.exceso_aceptado * 100):
+                    raise HTTPException(409, {"exceso_centavos": exceso})
         apuesta_id = db.execute("""
-            INSERT INTO apuesta (usuario_id, clave, partido_id, seleccion, monto, cuota, estado)
-            VALUES (?, ?, ?, ?, ?, ?, 'pendiente')
+            INSERT INTO apuesta (usuario_id, clave, partido_id, seleccion, monto, cuota, estado, creada)
+            VALUES (?, ?, ?, ?, ?, ?, 'pendiente', CURRENT_TIMESTAMP)
         """, (usuario_id, clave, datos.partido_id, datos.seleccion, monto, cuota)).lastrowid
         db.execute("INSERT INTO movimiento VALUES (?, 'reserva', ?, ?)", (apuesta_id, -monto, monto))
         return respuesta(db, usuario_id, apuesta_id)
