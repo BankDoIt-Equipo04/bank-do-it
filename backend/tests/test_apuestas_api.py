@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from app.cuentas import huella
 from app.datos_demo import preparar, ruta_demo
 from app.main import app
 
@@ -19,9 +20,16 @@ DATOS = {"partido_id": 101, "seleccion": "América", "monto": "100.00", "cuota":
 def demo(tmp_path):
     ruta = tmp_path / "prueba.sqlite3"
     preparar(ruta)
+    # Sesiones de prueba para las dos cuentas precargadas del escenario anterior.
+    with closing(sqlite3.connect(ruta)) as db, db:
+        for usuario in (3, 4):
+            db.execute("INSERT INTO cuenta VALUES (?, ?, ?, ?)", (usuario, f"demo{usuario}", b"", b""))
+            db.execute("INSERT INTO sesion VALUES (?, ?, strftime('%s', 'now') + 3600)",
+                       (huella(f"prueba-{usuario}"), usuario))
     app.dependency_overrides[ruta_demo] = lambda: ruta
     try:
         with TestClient(app) as cliente:
+            cliente.headers.update({"Authorization": "Bearer prueba-3"})
             yield cliente, ruta
     finally:
         app.dependency_overrides.pop(ruta_demo)
@@ -83,7 +91,7 @@ def test_usuario_y_redondeo(demo):
     apuesta = enviar(cliente, monto="0.05", cuota="1.50").json()["apuesta"]
     ruta = f"/apuestas/{apuesta['id']}/resultado"
     assert cliente.put("/usuarios/4" + ruta, json={"resultado": "ganada"}).status_code == 404
-    assert cliente.get("/usuarios/4/bankroll").json()["disponible"] == "800.00"
+    assert cliente.get("/usuarios/4/bankroll", headers={"Authorization": "Bearer prueba-4"}).json()["disponible"] == "800.00"
     res = cliente.put("/usuarios/3" + ruta, json={"resultado": "ganada"})
     assert res.json()["bankroll"]["disponible"] == "1000.03"
 
@@ -115,7 +123,7 @@ def test_historial_y_limite_semanal_al_confirmar(demo):
     assert len(final['apuestas']) == 2
     assert final['bankroll'] == aceptada.json()['bankroll']
     assert final['presupuesto']['usado_centavos'] == 55000
-    assert cliente.get('/usuarios/4/historial').json()['apuestas'] == []
+    assert cliente.get('/usuarios/4/historial', headers={'Authorization': 'Bearer prueba-4'}).json()['apuestas'] == []
 
 def test_recuerdo_persiste_solo_en_su_apuesta(demo):
     cliente, _ = demo
