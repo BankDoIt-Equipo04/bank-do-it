@@ -59,14 +59,64 @@ class FalloApi implements Exception {
   String toString() => mensaje;
 }
 
+class Sesion {
+  const Sesion(this.id, this.alias, this.token);
+  final int id;
+  final String alias, token;
+}
+
 class ApiApuestas {
-  ApiApuestas({http.Client? cliente}) : cliente = cliente ?? http.Client();
+  ApiApuestas({http.Client? cliente, this.sesion})
+    : cliente = cliente ?? http.Client();
   final http.Client cliente;
   static const servidor = String.fromEnvironment(
     'API_URL',
     defaultValue: 'http://127.0.0.1:8000',
   );
-  static const usuario = int.fromEnvironment('USUARIO_ID', defaultValue: 3);
+  final Sesion? sesion;
+  void Function()? alCaducar;
+  bool _cerrada = false;
+  Never caducar() {
+    if (!_cerrada) {
+      _cerrada = true;
+      alCaducar?.call();
+    }
+    throw FalloApi('La sesión terminó. Vuelve a ingresar.', reintentar: true);
+  }
+
+  int get usuario => sesion!.id;
+  Map<String, String> get cabecera => {
+    'Authorization': 'Bearer ${sesion!.token}',
+  };
+
+  Future<void> crearCuenta(String alias, String password, String saldo) async {
+    await _enviar(
+      'POST',
+      'auth/registro',
+      datos: {'alias': alias, 'password': password, 'saldo_inicial': saldo},
+    );
+  }
+
+  Future<ApiApuestas> ingresar(String alias, String password) async {
+    final j = await _enviar(
+      'POST',
+      'auth/login',
+      datos: {'alias': alias, 'password': password},
+    );
+    return ApiApuestas(
+      cliente: cliente,
+      sesion: Sesion(j['usuario_id'], j['alias'], j['access_token']),
+    );
+  }
+
+  Future<void> salir() async {
+    try {
+      await _enviar('POST', 'auth/logout');
+    } finally {
+      _cerrada = true;
+    }
+  }
+
   static String nuevaClave() {
     final random = Random.secure();
     return List.generate(
@@ -81,10 +131,9 @@ class ApiApuestas {
     Json? datos,
     String? clave,
   }) async {
-    final req = http.Request(
-      metodo,
-      Uri.parse('$servidor/usuarios/$usuario/$ruta'),
-    );
+    if (_cerrada) caducar();
+    final req = http.Request(metodo, Uri.parse('$servidor/$ruta'));
+    if (sesion != null) req.headers.addAll(cabecera);
     if (datos != null) {
       req.headers['Content-Type'] = 'application/json';
       req.body = jsonEncode(datos);
@@ -102,6 +151,13 @@ class ApiApuestas {
           'La API no pudo confirmar la operación. Reintenta.',
           reintentar: true,
         );
+      }
+      if (res.statusCode == 401 && sesion != null && ruta != 'auth/logout') {
+        caducar();
+      }
+      if (res.statusCode == 204 ||
+          (ruta == 'auth/logout' && res.statusCode == 401)) {
+        return {};
       }
       final j = jsonDecode(utf8.decode(res.bodyBytes)) as Json;
       if (res.statusCode >= 400) {
@@ -138,17 +194,22 @@ class ApiApuestas {
   }
 
   Future<Uint8List?> foto(int id, {Uint8List? contenido}) async {
+    if (_cerrada) caducar();
     final uri = Uri.parse('$servidor/usuarios/$usuario/apuestas/$id/recuerdo');
     try {
       final respuesta =
           await (contenido == null
-                  ? cliente.get(uri)
+                  ? cliente.get(uri, headers: cabecera)
                   : cliente.put(
                       uri,
-                      headers: {'Content-Type': 'application/octet-stream'},
+                      headers: {
+                        ...cabecera,
+                        'Content-Type': 'application/octet-stream',
+                      },
                       body: contenido,
                     ))
               .timeout(const Duration(seconds: 30));
+      if (respuesta.statusCode == 401) caducar();
       if (respuesta.statusCode == 204) return null;
       if (respuesta.statusCode == 200 && contenido == null) {
         return respuesta.bodyBytes;
@@ -167,14 +228,14 @@ class ApiApuestas {
   }
 
   Future<Historial> cargar() async =>
-      Historial(await _enviar('GET', 'historial'));
+      Historial(await _enviar('GET', 'usuarios/$usuario/historial'));
   Future<Json> registrar(Json datos, String clave) =>
-      _enviar('POST', 'apuestas', datos: datos, clave: clave);
+      _enviar('POST', 'usuarios/$usuario/apuestas', datos: datos, clave: clave);
 
   Future<void> resolver(int id, String resultado) async {
     await _enviar(
       'PUT',
-      'apuestas/$id/resultado',
+      'usuarios/$usuario/apuestas/$id/resultado',
       datos: {'resultado': resultado},
     );
   }

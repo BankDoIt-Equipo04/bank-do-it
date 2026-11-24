@@ -38,6 +38,7 @@ void main() {
           final fotos = <String, Uint8List>{};
           var cambios = 0;
           final api = ApiApuestas(
+            sesion: const Sesion(3, 'prueba', 'prueba'),
             cliente: MockClient((req) async {
               final ruta = req.url.path;
               if (req.method == 'PUT') {
@@ -61,7 +62,10 @@ void main() {
                     key: ValueKey(id),
                     api: api,
                     apuestaId: id,
-                    selector: SelectorFoto(picker: picker),
+                    selector: SelectorFoto(
+                      usuario: api.usuario,
+                      picker: picker,
+                    ),
                   ),
                 ),
               ),

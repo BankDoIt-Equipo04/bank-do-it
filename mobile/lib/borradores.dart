@@ -7,7 +7,7 @@ import 'api_apuestas.dart';
 class Borradores {
   Borradores(this.api);
   final ApiApuestas api;
-  final _prefijo = 'bankdoit.${ApiApuestas.servidor}.${ApiApuestas.usuario}.';
+  String get _prefijo => 'bankdoit.${ApiApuestas.servidor}.${api.usuario}.';
   late SharedPreferences _local;
   String get _cola => '${_prefijo}borrador.';
   DateTime? ultimaConsulta;

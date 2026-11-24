@@ -81,7 +81,12 @@ void main() {
           ),
         );
         await tester.pumpWidget(
-          BankDoItApp(api: ApiApuestas(cliente: cliente)),
+          BankDoItApp(
+            api: ApiApuestas(
+              sesion: const Sesion(3, 'prueba', 'prueba'),
+              cliente: cliente,
+            ),
+          ),
         );
         await tester.pumpAndSettle();
         expect(find.text('Mis apuestas'), findsOneWidget);

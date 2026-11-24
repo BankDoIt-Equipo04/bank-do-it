@@ -29,7 +29,7 @@ void main() {
         expect(ApiApuestas.servidor, 'http://127.0.0.1:18810');
         res = post
             ? await red.post(req.url, headers: req.headers, body: req.body)
-            : await red.get(req.url);
+            : await red.get(req.url, headers: req.headers);
       } else {
         final apuesta = {'id': 1, 'seleccion': 'Chiefs'};
         final saldo = {
@@ -59,7 +59,16 @@ void main() {
       }
       return res;
     });
-    final api = ApiApuestas(cliente: cliente);
+    var sesion = const Sesion(3, 'prueba', 'prueba');
+    if (real) {
+      expect(ApiApuestas.servidor, 'http://127.0.0.1:18810');
+      final acceso = ApiApuestas(cliente: red);
+      final alias = ApiApuestas.nuevaClave();
+      final clave = ApiApuestas.nuevaClave();
+      await acceso.crearCuenta(alias, clave, '1000.00');
+      sesion = (await acceso.ingresar(alias, clave)).sesion!;
+    }
+    final api = ApiApuestas(sesion: sesion, cliente: cliente);
     final inicial = Borradores(api);
     await inicial.abrir();
     expect((await inicial.actualizar()).disponible, '1000.00');

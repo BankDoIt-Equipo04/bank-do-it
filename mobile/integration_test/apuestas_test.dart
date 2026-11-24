@@ -1,4 +1,5 @@
 import 'package:bankdoit/main.dart';
+import 'package:bankdoit/borradores.dart';
 import 'package:bankdoit/api_apuestas.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -26,12 +27,22 @@ void main() {
         (w) => w is TextField && w.decoration?.labelText == campo,
       );
       await tester.ensureVisible(elemento);
+      await tester.tap(elemento);
       await tester.enterText(elemento, valor);
       await tester.pumpAndSettle();
     }
 
     await tester.pumpWidget(const BankDoItApp());
     await tester.pumpAndSettle();
+    final alias = ApiApuestas.nuevaClave();
+    final clave = ApiApuestas.nuevaClave();
+    await tocar('Crear cuenta');
+    await completar('Alias', alias);
+    await completar('Contraseña', clave);
+    await completar('Saldo inicial simulado', '1000');
+    await tocar('Registrar cuenta');
+    await completar('Contraseña', clave);
+    await tocar('Entrar');
     expect(find.text(r'$1000'), findsOneWidget);
     for (final (monto, resultado, saldo) in [
       ('100', 'ganada', '1100'),
@@ -66,5 +77,59 @@ void main() {
     }
     await tocar('Ganadas (1)');
     expect(find.text('Chiefs vs. Eagles'), findsOneWidget);
+    final acceso = ApiApuestas();
+    addTearDown(acceso.cliente.close);
+    final cuentaA = await acceso.ingresar(alias, clave);
+    final borradoresA = Borradores(cuentaA);
+    await borradoresA.abrir();
+    // Un borrador en espera de confirmación nunca debe aparecer en la otra cuenta.
+    await borradoresA.guardar({
+      'clave': ApiApuestas.nuevaClave(),
+      'creado': DateTime.now().toIso8601String(),
+      'datos': {'seleccion': 'Pendiente de A', 'monto': '10.00'},
+      'error': 'Requiere confirmación',
+    });
+    await cuentaA.salir();
+    Future<void> salir(String nombre) async {
+      await tester.tap(find.byTooltip('Cerrar sesión ($nombre)'));
+      await tester.pumpAndSettle();
+      expect(find.text('Iniciar sesión'), findsOneWidget);
+    }
+
+    await salir(alias);
+    final aliasB = ApiApuestas.nuevaClave();
+    await tocar('Crear cuenta');
+    await completar('Alias', aliasB);
+    await completar('Contraseña', clave);
+    await completar('Saldo inicial simulado', '75');
+    await tocar('Registrar cuenta');
+    await completar('Contraseña', 'incorrecta');
+    await tocar('Entrar');
+    expect(find.text('Alias o contraseña incorrectos.'), findsOneWidget);
+    await completar('Contraseña', clave);
+    expect(
+      find.text(aliasB),
+      findsOneWidget,
+      reason: 'El login conserva el alias registrado',
+    );
+    final contrasena = tester.widget<TextField>(
+      find.byWidgetPredicate((w) => w is TextField && w.obscureText),
+    );
+    expect(
+      contrasena.controller!.text == clave,
+      isTrue,
+      reason: 'El campo conserva la contraseña corregida',
+    );
+    await tocar('Entrar');
+    expect(find.text(r'$75'), findsOneWidget);
+    expect(find.text('Ganadas (0)'), findsOneWidget);
+    expect(find.textContaining('Pendiente de A'), findsNothing);
+    await salir(aliasB);
+    await completar('Alias', alias);
+    await completar('Contraseña', clave);
+    await tocar('Entrar');
+    expect(find.text(r'$1000'), findsOneWidget);
+    expect(find.text('Ganadas (1)'), findsOneWidget);
+    expect(find.textContaining('Pendiente de A'), findsOneWidget);
   });
 }

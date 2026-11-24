@@ -11,7 +11,7 @@ Desde `mobile`, ejecuta `flutter pub get` y elige un destino.
 - **Android por USB:** con depuración autorizada, ejecuta `adb reverse tcp:8000 tcp:8000` y después `flutter run -d ID` con el identificador que muestra `flutter devices`. El servidor permanece en la computadora.
 - **Emulador Android:** `flutter run -d ID --dart-define=API_URL=http://10.0.2.2:8000`.
 
-La demo usa el usuario 3, con saldo inicial de $1,000 y límite semanal de $500. También puede iniciarse con `--dart-define=USUARIO_ID=4` para usar el segundo usuario de prueba. El historial y los saldos provienen de la API. El consumo semanal incluye las apuestas registradas desde el lunes en la hora local del servidor. Los registros antiguos sin fecha permanecen en el historial.
+La pantalla inicial permite registrar un alias, una contraseña y un saldo simulado. Inicia sesión para abrir tu bankroll. Puedes salir con el botón de cerrar sesión. Los borradores quedan asociados a la cuenta y se recuperan al volver a ingresar. La sesión se mantiene en memoria mientras la app está abierta. Se requiere la API de cuentas del issue #34 (registro, login y logout). El historial y los saldos provienen de la API. El consumo semanal incluye las apuestas registradas desde el lunes en la hora local del servidor. Los registros antiguos sin fecha permanecen en el historial.
 
 ## Probar el flujo completo
 
