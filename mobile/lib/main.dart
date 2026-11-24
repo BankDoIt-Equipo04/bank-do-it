@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'borradores.dart';
+import 'bankroll.dart';
 import 'acceso.dart';
 
 import 'package:flutter/foundation.dart';
@@ -216,7 +217,12 @@ class _PrincipalState extends State<Principal> {
               historial: historial,
               actualizar: actualizar,
             ),
-            ListViewBankroll(historial: historial),
+            PantallaBankroll(
+              api: api,
+              historial: historial,
+              visible: actual == Seccion.bankroll,
+              actualizarSaldo: actualizar,
+            ),
             Padding(
               padding: EdgeInsets.all(24),
               child: Column(
@@ -328,18 +334,4 @@ class _PrincipalState extends State<Principal> {
       ),
     );
   }
-}
-
-class ListViewBankroll extends StatelessWidget {
-  const ListViewBankroll({required this.historial, super.key});
-  final Historial historial;
-  @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(24),
-    children: [
-      const Text('Bankroll', style: titulo),
-      SizedBox(height: 16),
-      Resumen(historial: historial),
-    ],
-  );
 }
