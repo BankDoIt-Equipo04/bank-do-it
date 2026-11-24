@@ -1,5 +1,18 @@
 ﻿# BANKDOIT | Registro de apuestas y control del saldo
 
+## Registro e inicio de sesión para Flutter
+
+| Operación | Solicitud JSON | Respuesta |
+| --- | --- | --- |
+| `POST /auth/registro` | `{"alias":"luis_demo","password":"ClaveDePrueba123","saldo_inicial":"1000.00"}` | 201 con `usuario_id` y `alias`. Un alias repetido devuelve 409. |
+| `POST /auth/login` | `{"alias":"luis_demo","password":"ClaveDePrueba123"}` | 200 con `usuario_id`, `alias`, `access_token`, `token_type` y `expires_in` en segundos. |
+| `POST /auth/login` | `{"alias":"luis_demo","password":"incorrecta"}` | 401 con `{"detail":"Alias o contraseña incorrectos."}`. |
+| `POST /auth/logout` | Sin cuerpo, con la cabecera de sesión | 204. El token deja de funcionar. |
+
+En Flutter usa el `usuario_id` devuelto al iniciar sesión y envía `Authorization: Bearer <access_token>` en cada consulta o cambio de saldo, apuestas, historial y fotos. Conserva también `Idempotency-Key` al registrar una apuesta. La sesión dura 24 horas. Un token inválido o vencido devuelve 401. Una ruta de otro usuario devuelve 404. Al cerrar sesión, descarta el token y carga los borradores correspondientes a la siguiente cuenta.
+
+Para el registro, usa un alias de 3 a 40 letras ASCII, números, puntos, guiones o guiones bajos y una contraseña de 8 a 128 caracteres. El saldo inicial es simulado y puede ser cero.
+
 ## Consultar el saldo
 GET /usuarios/{usuario_id}/bankroll devuelve el saldo disponible y el monto en juego.
 
@@ -40,17 +53,23 @@ python -m uvicorn app.main:app --reload
 
 Abrir http://127.0.0.1:8000/docs. La demo local utiliza SQLite y persiste al reiniciar. El primer arranque prepara los usuarios 3 ($1,000) y 4 ($800), y los partidos 42, 101 y 202. Volver a preparar la demo conserva las apuestas. La base distribuida de PostgreSQL se integrará al disponer del esquema del equipo.
 
-En una segunda ventana de PowerShell, registrar una apuesta y resolverla:
+En una segunda ventana de PowerShell, crea una cuenta de prueba e inicia sesión. Después registra una apuesta, reenvíala y resuélvela.
 
 ```powershell
-$url = 'http://127.0.0.1:8000/usuarios/3'
-$cabecera = @{'Idempotency-Key' = [guid]::NewGuid().ToString()}
+$api = 'http://127.0.0.1:8000'
+$alias = 'demo_' + [guid]::NewGuid().ToString('N')
+$datosCuenta = @{alias=$alias; password='ClaveDePrueba123'; saldo_inicial='1000.00'}
+Invoke-RestMethod "$api/auth/registro" -Method Post -ContentType 'application/json' -Body ($datosCuenta | ConvertTo-Json)
+$ingreso = @{alias=$alias; password=$datosCuenta.password} | ConvertTo-Json
+$sesion = Invoke-RestMethod "$api/auth/login" -Method Post -ContentType 'application/json' -Body $ingreso
+$url = "$api/usuarios/$($sesion.usuario_id)"
+$cabecera = @{Authorization="Bearer $($sesion.access_token)"; 'Idempotency-Key'=[guid]::NewGuid().ToString()}
 $datos = '{"partido_id":101,"seleccion":"Local","monto":"100.00","cuota":"2.00"}'
 $registro = Invoke-RestMethod "$url/apuestas" -Method Post -Headers $cabecera -ContentType 'application/json' -Body $datos
 $registro.bankroll
 $reenvio = Invoke-RestMethod "$url/apuestas" -Method Post -Headers $cabecera -ContentType 'application/json' -Body $datos
 $reenvio.apuesta.id -eq $registro.apuesta.id
-$resuelta = Invoke-RestMethod "$url/apuestas/$($registro.apuesta.id)/resultado" -Method Put -ContentType 'application/json' -Body '{"resultado":"ganada"}'
+$resuelta = Invoke-RestMethod "$url/apuestas/$($registro.apuesta.id)/resultado" -Method Put -Headers $cabecera -ContentType 'application/json' -Body '{"resultado":"ganada"}'
 $resuelta.bankroll
 ```
 

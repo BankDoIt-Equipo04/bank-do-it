@@ -16,6 +16,17 @@ def preparar(ruta: Path) -> None:
                 usuario_id INTEGER PRIMARY KEY,
                 inicial INTEGER NOT NULL CHECK (inicial >= 0)
             );
+            CREATE TABLE IF NOT EXISTS cuenta (
+                usuario_id INTEGER PRIMARY KEY REFERENCES bankroll(usuario_id),
+                alias TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                sal BLOB NOT NULL,
+                clave_derivada BLOB NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS sesion (
+                huella BLOB PRIMARY KEY NOT NULL,
+                usuario_id INTEGER NOT NULL REFERENCES cuenta(usuario_id),
+                vence INTEGER NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS partido (id INTEGER PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS apuesta (
                 id INTEGER PRIMARY KEY,
