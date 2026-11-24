@@ -1,6 +1,6 @@
 # Fragmentos de PostgreSQL y sus réplicas
 
-Issues #17 (fragmentos y réplicas) y #18 (pruebas de falla). Responsable: Osvaldo Yair Serna Salazar.
+Issues #17 (fragmentos y réplicas), #18 (pruebas de falla) y #32 (acceso de la API). Responsable: Osvaldo Yair Serna Salazar.
 
 Aplica la distribución de [docs/distribucion-datos.md](../../docs/distribucion-datos.md) (#3) sobre el esquema de [database/sql](../sql) (#16): usuarios impares en el primario del Nodo A (PC de Luis), pares en el primario del Nodo B (remoto), y cada fragmento con una réplica síncrona en el otro equipo.
 
@@ -158,6 +158,29 @@ Al final, el fragmento par tiene su primario en el Nodo A y su réplica en el No
 ### Advertencia para la API
 
 Si la API cancela una consulta que espera a la réplica (por ejemplo, por un *timeout* que cancela la sentencia), PostgreSQL avisa que la transacción **ya se confirmó en el primario aunque no se haya replicado**. Por eso la API no debe cancelar esas escrituras: debe responder "pendiente" y dejar que la app reenvíe el borrador con la misma `Idempotency-Key`, que devuelve la apuesta original sin volver a cobrar.
+
+## Acceso de la API (#32)
+
+La API se conecta a cada primario con la cuenta `bankdoit_api` por TLS (`sslmode=verify-full`). El directorio único de cuentas y las sesiones viven en el primario impar. Pasos, variables, funciones disponibles y lo que implementa Luis en Python: [GUIA_CONEXION_API.md](GUIA_CONEXION_API.md).
+
+```powershell
+.\generar_certificados.ps1      # CA de pruebas y certificados en certs\ (fuera del repositorio)
+.\levantar_y_probar.ps1
+.\configurar_acceso_api.ps1     # rol, directorio, pg_hba con TLS y verificación (repetible)
+```
+
+| Archivo | Contenido |
+| --- | --- |
+| `init/20_acceso_api.sql` | Rol `bankdoit_api`, permisos mínimos, funciones `consultar_bankroll` y `consultar_historial`, funciones de negocio como `SECURITY DEFINER` |
+| `init/21_directorio_cuentas.sql` | Tablas `cuenta` y `sesion` y sus funciones (solo primario impar) |
+| `init/20_acceso_api.sh` | Aplica lo anterior y reescribe `pg_hba.conf` (API solo con TLS y desde orígenes permitidos) |
+| `init/tls.sh` | Deja el certificado del nodo con los permisos que exige PostgreSQL |
+| `cliente/verificar_conexion_api.py` | Cliente psycopg configurado como la API; verifica TLS, permisos y el flujo con dos cuentas |
+| `evidencia/evidencia_conexion_api.md` | Resultado de la última verificación |
+
+Para ensayar sin tocar otra instalación se puede usar otro proyecto y prefijo de contenedores: `$env:BANKDOIT_PROYECTO='bankdoit-ensayo'; $env:BANKDOIT_PREFIJO='ensayo-'` y otros puertos (`PUERTO_A_PRIMARIO`, etc.) y subred (`RED_DOCKER_SUBNET`).
+
+**Instalación anterior a #32:** los contenedores necesitan recrearse para activar TLS (`docker compose ... up -d`, los volúmenes se conservan). Si la red `bankdoit-distribuido_default` ya existe con otra subred, Docker pedirá quitarla (`docker network rm bankdoit-distribuido_default`) antes de recrear.
 
 ## Consideraciones y pendientes
 

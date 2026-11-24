@@ -62,7 +62,7 @@ CREATE TABLE usuario (
     estado           VARCHAR(10) NOT NULL DEFAULT 'activo',
     creado_en        TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_usuario_alias UNIQUE (alias),
-    CONSTRAINT ck_usuario_alias CHECK (alias ~ '^[A-Za-z0-9_.]{3,40}$'),
+    CONSTRAINT ck_usuario_alias CHECK (alias ~ '^[A-Za-z0-9_.-]{3,40}$'),
     CONSTRAINT ck_usuario_hash CHECK (length(hash_contrasena) >= 20),
     CONSTRAINT ck_usuario_rol CHECK (rol IN ('usuario', 'administrador')),
     CONSTRAINT ck_usuario_estado CHECK (estado IN ('activo', 'suspendido'))

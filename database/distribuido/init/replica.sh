@@ -37,4 +37,10 @@ fi
 
 # cluster_name también es el application_name con el que el primario
 # reconoce a esta réplica como síncrona.
-exec postgres -c hot_standby=on -c cluster_name="$REPLICA_NOMBRE" -c wal_receiver_timeout=10s
+# TLS para las conexiones de clientes (tls.sh deja el certificado listo).
+TLS=()
+if [ -f /var/lib/postgresql/tls/server.crt ]; then
+    TLS=(-c ssl=on -c ssl_cert_file=/var/lib/postgresql/tls/server.crt
+         -c ssl_key_file=/var/lib/postgresql/tls/server.key -c ssl_min_protocol_version=TLSv1.2)
+fi
+exec postgres -c hot_standby=on -c cluster_name="$REPLICA_NOMBRE" -c wal_receiver_timeout=10s "${TLS[@]}"
