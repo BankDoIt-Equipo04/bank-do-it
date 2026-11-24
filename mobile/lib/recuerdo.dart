@@ -7,11 +7,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api_apuestas.dart';
 
 class SelectorFoto {
-  SelectorFoto({ImagePicker? picker}) : _picker = picker ?? ImagePicker();
+  SelectorFoto({required this.usuario, ImagePicker? picker})
+    : _picker = picker ?? ImagePicker();
+  final int usuario;
   final ImagePicker _picker;
   bool get camara => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
-  String get _pendiente =>
-      'captura:${ApiApuestas.servidor}:${ApiApuestas.usuario}';
+  String get _pendiente => 'captura:${ApiApuestas.servidor}:$usuario';
   Future<XFile?> elegir(int id) async {
     if (!camara) return _picker.pickImage(source: ImageSource.gallery);
     final prefs = await SharedPreferences.getInstance();
@@ -63,7 +64,8 @@ class Recuerdo extends StatefulWidget {
 }
 
 class _RecuerdoState extends State<Recuerdo> {
-  late final selector = widget.selector ?? SelectorFoto();
+  late final selector =
+      widget.selector ?? SelectorFoto(usuario: widget.api.usuario);
   Uint8List? imagen;
   String? error;
   bool ocupado = true;

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'borradores.dart';
+import 'acceso.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -10,13 +11,27 @@ import 'api_apuestas.dart';
 
 void main() => runApp(const BankDoItApp());
 
-class BankDoItApp extends StatelessWidget {
+class BankDoItApp extends StatefulWidget {
   const BankDoItApp({this.api, super.key});
   final ApiApuestas? api;
 
   @override
+  State<BankDoItApp> createState() => _AppState();
+}
+
+class _AppState extends State<BankDoItApp> {
+  late final anonima = widget.api ?? ApiApuestas();
+  late ApiApuestas? cuenta = anonima.sesion == null ? null : anonima;
+  @override
+  void dispose() {
+    if (widget.api == null) anonima.cliente.close();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      key: ValueKey(cuenta?.sesion?.id),
       title: 'BANKDOIT',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -30,7 +45,22 @@ class BankDoItApp extends StatelessWidget {
           border: OutlineInputBorder(),
         ),
       ),
-      home: Principal(api: api),
+      home: cuenta == null
+          ? Acceso(
+              api: anonima,
+              alIngresar: (api) {
+                api.alCaducar = () {
+                  if (mounted && identical(cuenta, api)) {
+                    setState(() => cuenta = null);
+                  }
+                };
+                setState(() => cuenta = api);
+              },
+            )
+          : Principal(
+              api: cuenta!,
+              alSalir: () => setState(() => cuenta = null),
+            ),
     );
   }
 }
@@ -67,14 +97,15 @@ class Marca extends StatelessWidget {
 }
 
 class Principal extends StatefulWidget {
-  const Principal({required this.api, super.key});
-  final ApiApuestas? api;
+  const Principal({required this.api, required this.alSalir, super.key});
+  final ApiApuestas api;
+  final VoidCallback alSalir;
   @override
   State<Principal> createState() => _PrincipalState();
 }
 
 class _PrincipalState extends State<Principal> {
-  late final api = widget.api ?? ApiApuestas();
+  late final api = widget.api;
   late final borradores = Borradores(api);
   late Future<Historial> carga;
   Timer? reintento;
@@ -110,14 +141,37 @@ class _PrincipalState extends State<Principal> {
   }
 
   void actualizar() {
-    if (!ocupado) setState(() => carga = abierto ? consultar() : iniciar());
+    if (ocupado) return;
+    final nuevaCarga = abierto ? consultar() : iniciar();
+    setState(() {
+      carga = nuevaCarga;
+    });
   }
 
   @override
   void dispose() {
     reintento?.cancel();
-    if (widget.api == null) api.cliente.close();
+
     super.dispose();
+  }
+
+  bool cerrando = false;
+  Future<void> salir() async {
+    if (cerrando) return;
+    setState(() => cerrando = true);
+    try {
+      await api.salir();
+    } on FalloApi catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sesión cerrada en este dispositivo. ${e.mensaje}'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) widget.alSalir();
+    }
   }
 
   Seccion actual = Seccion.apuestas;
@@ -182,11 +236,22 @@ class _PrincipalState extends State<Principal> {
         );
       },
     );
+    final botonSalir = cerrando
+        ? const SizedBox.square(
+            dimension: 24,
+            child: CircularProgressIndicator(),
+          )
+        : IconButton(
+            onPressed: cerrando ? null : salir,
+            tooltip: 'Cerrar sesión (${api.sesion!.alias})',
+            icon: const Icon(Icons.logout),
+          );
     final superior = kIsWeb || movil;
     return Scaffold(
       appBar: superior
           ? AppBar(
               backgroundColor: Colors.white,
+              actions: [botonSalir],
               surfaceTintColor: Colors.transparent,
               title: kIsWeb
                   ? SingleChildScrollView(
@@ -244,6 +309,7 @@ class _PrincipalState extends State<Principal> {
                       padding: EdgeInsets.all(8),
                       child: Marca(),
                     ),
+                    trailing: botonSalir,
                     labelType: NavigationRailLabelType.all,
                     selectedIndex: actual.index,
                     onDestinationSelected: seleccionar,
