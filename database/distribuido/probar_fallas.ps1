@@ -19,13 +19,17 @@ Get-Content .env | Where-Object { $_ -match '^\s*([A-Z_]+)=(.*)$' } | ForEach-Ob
 $usuarioBD = if ($cfg.POSTGRES_USER) { $cfg.POSTGRES_USER } else { 'bankdoit' }
 $baseBD    = if ($cfg.POSTGRES_DB)   { $cfg.POSTGRES_DB }   else { 'bankdoit' }
 
-$A_PRIM = 'nodo-a-primario-impar'
-$A_REPL = 'nodo-a-replica-par'
-$B_PRIM = 'nodo-b-primario-par'
-$B_REPL = 'nodo-b-replica-impar'
-$B_RECU = 'nodo-b-replica-par'
-$RED    = 'bankdoit-distribuido_default'
-$perfiles = @('--profile', 'nodo-a', '--profile', 'nodo-b', '--profile', 'recuperacion')
+# Proyecto y prefijo configurables para ensayar sin tocar otra instalación:
+#   $env:BANKDOIT_PROYECTO='bankdoit-ensayo'; $env:BANKDOIT_PREFIJO='ensayo-'
+$PROYECTO = if ($env:BANKDOIT_PROYECTO) { $env:BANKDOIT_PROYECTO } else { 'bankdoit-distribuido' }
+$P = if ($env:BANKDOIT_PREFIJO) { $env:BANKDOIT_PREFIJO } else { '' }
+$A_PRIM = "${P}nodo-a-primario-impar"
+$A_REPL = "${P}nodo-a-replica-par"
+$B_PRIM = "${P}nodo-b-primario-par"
+$B_REPL = "${P}nodo-b-replica-impar"
+$B_RECU = "${P}nodo-b-replica-par"
+$RED    = "${PROYECTO}_default"
+$perfiles = @('-p', $PROYECTO, '--profile', 'nodo-a', '--profile', 'nodo-b', '--profile', 'recuperacion')
 $script:fallos = 0
 $md = New-Object System.Collections.Generic.List[string]
 
@@ -163,8 +167,8 @@ Verificar ((Disponible $A_PRIM 3) -eq $u3Antes) 'el saldo del usuario 3 no cambi
 Verificar ((Disponible $B_PRIM 4) -eq $u4Antes) 'el saldo del usuario 4 no cambió durante la partición'
 
 Write-Host '  Restableciendo la red...'
-docker network connect $RED $B_PRIM 2>&1 | Out-Null
-docker network connect $RED $B_REPL 2>&1 | Out-Null
+docker network connect --alias nodo-b-primario-par $RED $B_PRIM 2>&1 | Out-Null
+docker network connect --alias nodo-b-replica-impar $RED $B_REPL 2>&1 | Out-Null
 Nota 'Se reconecta el Nodo B. Las réplicas vuelven a conectarse solas y los COMMIT que estaban en espera se confirman.'
 Esperar 'que se confirmen las escrituras en espera' {
     ((EsperandoReplica $A_PRIM) -eq 0) -and ((EsperandoReplica $B_PRIM) -eq 0) -and
@@ -235,7 +239,7 @@ Operacion $E2 'Registrar apuesta del usuario 4 en el primario promovido ($25)' $
 
 Write-Host '  Paso 3: resincronizar el equipo recuperado del Nodo B como réplica'
 Q $A_REPL "SELECT pg_create_physical_replication_slot('replica_par')" | Out-Null
-docker compose @perfiles up -d $B_RECU 2>&1 | Out-Null
+docker compose @perfiles up -d nodo-b-replica-par 2>&1 | Out-Null
 Esperar 'réplica par reconstruida y síncrona' {
     ((Q $A_REPL "SELECT state || '/' || sync_state FROM pg_stat_replication WHERE application_name = 'replica_par'") -eq 'streaming/sync') -and
     ((EsperandoReplica $A_REPL) -eq 0)

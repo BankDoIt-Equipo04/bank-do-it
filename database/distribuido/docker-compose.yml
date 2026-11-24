@@ -19,6 +19,10 @@ x-postgres: &postgres
     POSTGRES_USER: ${POSTGRES_USER:-bankdoit}
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Copia .env.example a .env y define POSTGRES_PASSWORD}
     REPLICADOR_PASSWORD: ${REPLICADOR_PASSWORD:?Define REPLICADOR_PASSWORD en .env}
+    # Acceso de la API (#32): se aplica con configurar_acceso_api.ps1.
+    BANKDOIT_API_PASSWORD: ${BANKDOIT_API_PASSWORD:-}
+    API_ORIGEN_CIDR: ${API_ORIGEN_CIDR:-172.28.0.0/16}
+    RED_CIDR: ${RED_CIDR:-172.28.0.0/16}
     TZ: America/Mexico_City
     PGTZ: America/Mexico_City
   healthcheck:
@@ -32,14 +36,19 @@ services:
   nodo-a-primario-impar:
     <<: *postgres
     profiles: ["nodo-a"]
-    container_name: nodo-a-primario-impar
+    container_name: ${BANKDOIT_PREFIJO:-}nodo-a-primario-impar
     environment:
       <<: *entorno
       FRAGMENTO: impar
+      TLS_NODO: nodo-a
       REPLICA_NOMBRE: replica_impar
-    command: ["postgres", "-c", "wal_level=logical", "-c", "max_wal_senders=10",
+    entrypoint: ["bash", "/scripts/tls.sh"]
+    command: ["docker-entrypoint.sh", "postgres", "-c", "wal_level=logical", "-c", "max_wal_senders=10",
               "-c", "max_replication_slots=10", "-c", "cluster_name=primario_impar",
-              "-c", "wal_sender_timeout=10s", "-c", "wal_receiver_timeout=10s"]
+              "-c", "wal_sender_timeout=10s", "-c", "wal_receiver_timeout=10s",
+              "-c", "ssl=on", "-c", "ssl_cert_file=/var/lib/postgresql/tls/server.crt",
+              "-c", "ssl_key_file=/var/lib/postgresql/tls/server.key",
+              "-c", "ssl_min_protocol_version=TLSv1.2"]
     ports: ["${BIND_IP:-127.0.0.1}:${PUERTO_A_PRIMARIO:-5441}:5432"]
     volumes:
       - datos_a_primario_impar:/var/lib/postgresql/data
@@ -47,41 +56,49 @@ services:
       - ../sql/02_funciones_triggers.sql:/docker-entrypoint-initdb.d/02_funciones_triggers.sql:ro
       - ./init/10_fragmento.sh:/docker-entrypoint-initdb.d/10_fragmento.sh:ro
       - ./init:/scripts:ro
+      - ./certs:/certs-origen:ro
       - ./datos:/datos:ro
       - ./pruebas:/pruebas:ro
 
   nodo-a-replica-par:
     <<: *postgres
     profiles: ["nodo-a"]
-    container_name: nodo-a-replica-par
+    container_name: ${BANKDOIT_PREFIJO:-}nodo-a-replica-par
     user: postgres
-    entrypoint: ["bash", "/scripts/replica.sh"]
+    entrypoint: ["bash", "/scripts/tls.sh", "bash", "/scripts/replica.sh"]
     environment:
       <<: *entorno
+      TLS_NODO: nodo-a
       REPLICA_NOMBRE: replica_par
       PRIMARIO_HOST: ${PAR_PRIMARIO_HOST:-nodo-b-primario-par}
       PRIMARIO_PUERTO: ${PAR_PRIMARIO_PUERTO:-5432}
     ports: ["${BIND_IP:-127.0.0.1}:${PUERTO_A_REPLICA:-5442}:5432"]
     volumes:
       - datos_a_replica_par:/var/lib/postgresql/data
-      - ./init/replica.sh:/scripts/replica.sh:ro
+      - ./init:/scripts:ro
+      - ./certs:/certs-origen:ro
       - ./pruebas:/pruebas:ro
 
   # ------------------------------------------------------------- Nodo B
   nodo-b-primario-par:
     <<: *postgres
     profiles: ["nodo-b"]
-    container_name: nodo-b-primario-par
+    container_name: ${BANKDOIT_PREFIJO:-}nodo-b-primario-par
     environment:
       <<: *entorno
       FRAGMENTO: par
+      TLS_NODO: nodo-b
       REPLICA_NOMBRE: replica_par
       # Dueño del catálogo común (se copia por replicación lógica).
       CATALOGO_HOST: ${IMPAR_PRIMARIO_HOST:-nodo-a-primario-impar}
       CATALOGO_PUERTO: ${IMPAR_PRIMARIO_PUERTO:-5432}
-    command: ["postgres", "-c", "wal_level=logical", "-c", "max_wal_senders=10",
+    entrypoint: ["bash", "/scripts/tls.sh"]
+    command: ["docker-entrypoint.sh", "postgres", "-c", "wal_level=logical", "-c", "max_wal_senders=10",
               "-c", "max_replication_slots=10", "-c", "cluster_name=primario_par",
-              "-c", "wal_sender_timeout=10s", "-c", "wal_receiver_timeout=10s"]
+              "-c", "wal_sender_timeout=10s", "-c", "wal_receiver_timeout=10s",
+              "-c", "ssl=on", "-c", "ssl_cert_file=/var/lib/postgresql/tls/server.crt",
+              "-c", "ssl_key_file=/var/lib/postgresql/tls/server.key",
+              "-c", "ssl_min_protocol_version=TLSv1.2"]
     ports: ["${BIND_IP:-127.0.0.1}:${PUERTO_B_PRIMARIO:-5451}:5432"]
     volumes:
       - datos_b_primario_par:/var/lib/postgresql/data
@@ -89,24 +106,27 @@ services:
       - ../sql/02_funciones_triggers.sql:/docker-entrypoint-initdb.d/02_funciones_triggers.sql:ro
       - ./init/10_fragmento.sh:/docker-entrypoint-initdb.d/10_fragmento.sh:ro
       - ./init:/scripts:ro
+      - ./certs:/certs-origen:ro
       - ./datos:/datos:ro
       - ./pruebas:/pruebas:ro
 
   nodo-b-replica-impar:
     <<: *postgres
     profiles: ["nodo-b"]
-    container_name: nodo-b-replica-impar
+    container_name: ${BANKDOIT_PREFIJO:-}nodo-b-replica-impar
     user: postgres
-    entrypoint: ["bash", "/scripts/replica.sh"]
+    entrypoint: ["bash", "/scripts/tls.sh", "bash", "/scripts/replica.sh"]
     environment:
       <<: *entorno
+      TLS_NODO: nodo-b
       REPLICA_NOMBRE: replica_impar
       PRIMARIO_HOST: ${IMPAR_PRIMARIO_HOST:-nodo-a-primario-impar}
       PRIMARIO_PUERTO: ${IMPAR_PRIMARIO_PUERTO:-5432}
     ports: ["${BIND_IP:-127.0.0.1}:${PUERTO_B_REPLICA:-5452}:5432"]
     volumes:
       - datos_b_replica_impar:/var/lib/postgresql/data
-      - ./init/replica.sh:/scripts/replica.sh:ro
+      - ./init:/scripts:ro
+      - ./certs:/certs-origen:ro
       - ./pruebas:/pruebas:ro
 
   # ---------------------------------------------- Recuperación (#18)
@@ -116,19 +136,27 @@ services:
   nodo-b-replica-par:
     <<: *postgres
     profiles: ["recuperacion"]
-    container_name: nodo-b-replica-par
+    container_name: ${BANKDOIT_PREFIJO:-}nodo-b-replica-par
     user: postgres
-    entrypoint: ["bash", "/scripts/replica.sh"]
+    entrypoint: ["bash", "/scripts/tls.sh", "bash", "/scripts/replica.sh"]
     environment:
       <<: *entorno
+      TLS_NODO: nodo-b
       REPLICA_NOMBRE: replica_par
       PRIMARIO_HOST: ${PAR_NUEVO_PRIMARIO_HOST:-nodo-a-replica-par}
       PRIMARIO_PUERTO: ${PAR_NUEVO_PRIMARIO_PUERTO:-5432}
     ports: ["${BIND_IP:-127.0.0.1}:${PUERTO_B_PRIMARIO:-5451}:5432"]
     volumes:
       - datos_b_replica_par:/var/lib/postgresql/data
-      - ./init/replica.sh:/scripts/replica.sh:ro
+      - ./init:/scripts:ro
+      - ./certs:/certs-origen:ro
       - ./pruebas:/pruebas:ro
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${RED_DOCKER_SUBNET:-172.28.0.0/16}
 
 volumes:
   datos_a_primario_impar:

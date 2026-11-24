@@ -1,0 +1,4 @@
+# Certificados y llaves: se generan en cada equipo, nunca se suben.
+*
+!.gitignore
+!generar.sh

@@ -18,12 +18,16 @@ Get-Content .env | Where-Object { $_ -match '^\s*([A-Z_]+)=(.*)$' } | ForEach-Ob
 $usuarioBD = if ($cfg.POSTGRES_USER) { $cfg.POSTGRES_USER } else { 'bankdoit' }
 $baseBD    = if ($cfg.POSTGRES_DB)   { $cfg.POSTGRES_DB }   else { 'bankdoit' }
 
-$A_PRIM = 'nodo-a-primario-impar'
-$A_REPL = 'nodo-a-replica-par'
-$B_PRIM = 'nodo-b-primario-par'
-$B_REPL = 'nodo-b-replica-impar'
+# Proyecto y prefijo configurables para ensayar sin tocar otra instalación:
+#   $env:BANKDOIT_PROYECTO='bankdoit-ensayo'; $env:BANKDOIT_PREFIJO='ensayo-'
+$PROYECTO = if ($env:BANKDOIT_PROYECTO) { $env:BANKDOIT_PROYECTO } else { 'bankdoit-distribuido' }
+$P = if ($env:BANKDOIT_PREFIJO) { $env:BANKDOIT_PREFIJO } else { '' }
+$A_PRIM = "${P}nodo-a-primario-impar"
+$A_REPL = "${P}nodo-a-replica-par"
+$B_PRIM = "${P}nodo-b-primario-par"
+$B_REPL = "${P}nodo-b-replica-impar"
 $todos  = @($A_PRIM, $B_REPL, $B_PRIM, $A_REPL)
-$perfiles = @('--profile', 'nodo-a', '--profile', 'nodo-b', '--profile', 'recuperacion')
+$perfiles = @('-p', $PROYECTO, '--profile', 'nodo-a', '--profile', 'nodo-b', '--profile', 'recuperacion')
 $script:fallos = 0
 
 function Titulo($texto) { Write-Host ''; Write-Host "== $texto ==" -ForegroundColor Cyan }
@@ -69,16 +73,20 @@ function InitTerminado($contenedor) {
 }
 
 # ---------------------------------------------------------------------
+if (-not (Test-Path .\certs\nodo-a.crt) -or -not (Test-Path .\certs\nodo-b.crt)) {
+    Titulo 'Generando certificados TLS de prueba'
+    & .\generar_certificados.ps1 | Out-Null
+}
 Titulo 'Borrando la simulación anterior'
 docker compose @perfiles down -v --remove-orphans 2>&1 | Out-Null
 
 Titulo 'Levantando los primarios (Nodo A: impar, Nodo B: par)'
-docker compose @perfiles up -d $A_PRIM $B_PRIM 2>&1 | Out-Null
+docker compose @perfiles up -d nodo-a-primario-impar nodo-b-primario-par 2>&1 | Out-Null
 Esperar 'inicialización de los primarios' { (InitTerminado $A_PRIM) -and (InitTerminado $B_PRIM) } | Out-Null
 Write-Host 'Primarios listos.'
 
 Titulo 'Levantando las réplicas (copia con pg_basebackup)'
-docker compose @perfiles up -d $A_REPL $B_REPL 2>&1 | Out-Null
+docker compose @perfiles up -d nodo-a-replica-par nodo-b-replica-impar 2>&1 | Out-Null
 Esperar 'réplicas síncronas conectadas' {
     ((Q $A_PRIM "SELECT sync_state FROM pg_stat_replication WHERE application_name = 'replica_impar'") -eq 'sync') -and
     ((Q $B_PRIM "SELECT sync_state FROM pg_stat_replication WHERE application_name = 'replica_par'") -eq 'sync')
@@ -179,7 +187,7 @@ Write-Host ''
 if ($script:fallos -eq 0) {
     Write-Host '>>> TODAS LAS COMPROBACIONES PASARON' -ForegroundColor Green
     Write-Host 'Los cuatro contenedores siguen arriba para revisarlos (puertos 5441, 5442, 5451, 5452).'
-    Write-Host 'Para apagarlos: docker compose --profile nodo-a --profile nodo-b --profile recuperacion down'
+    Write-Host "Para apagarlos: docker compose -p $PROYECTO --profile nodo-a --profile nodo-b --profile recuperacion down"
     exit 0
 }
 Write-Host ">>> $($script:fallos) comprobación(es) fallaron" -ForegroundColor Red
