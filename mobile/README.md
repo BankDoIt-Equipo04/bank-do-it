@@ -20,3 +20,9 @@ La pantalla inicial permite registrar un alias, una contraseña y un saldo simul
 3. Termina el servidor de prueba con Ctrl+C. Para repetir el recorrido desde el saldo inicial, reinícialo.
 
 Para las pruebas de navegación con datos controlados, ejecuta `flutter test` desde `mobile`.
+
+## Administración (#39)
+
+La pantalla se habilita cuando el login devuelve `rol: "administrador"`. El contrato propuesto para el #38 usa `GET /admin/cuentas` con respuesta `{"cuentas":[{"alias":"demo","estado":"activo"}]}`, y `POST /admin/partidos` con `deporte`, `fecha` (AAAA-MM-DD), `local` y `visitante`. Ambos usan la sesión y requieren autorización de administrador en el servidor. El alta envía `Idempotency-Key` para repetir el mismo envío si se pierde la respuesta. Los deportes enviados son «Fútbol» y «Fútbol americano».
+
+La prueba `flutter test test/administracion_test.dart` usa respuestas simuladas para consultar las cuentas y registrar dos partidos de una jornada. La integración real requiere las rutas del #38.

@@ -60,7 +60,8 @@ class FalloApi implements Exception {
 }
 
 class Sesion {
-  const Sesion(this.id, this.alias, this.token);
+  const Sesion(this.id, this.alias, this.token, {this.administrador = false});
+  final bool administrador;
   final int id;
   final String alias, token;
 }
@@ -105,7 +106,12 @@ class ApiApuestas {
     );
     return ApiApuestas(
       cliente: cliente,
-      sesion: Sesion(j['usuario_id'], j['alias'], j['access_token']),
+      sesion: Sesion(
+        j['usuario_id'],
+        j['alias'],
+        j['access_token'],
+        administrador: j['rol'] == 'administrador',
+      ),
     );
   }
 
@@ -199,6 +205,22 @@ class ApiApuestas {
         reintentar: true,
       );
     }
+  }
+
+  Future<List<Json>> cuentasAdministradas() async {
+    final datos = await _enviar('GET', 'admin/cuentas');
+    final cuentas = datos['cuentas'];
+    if (cuentas is! List ||
+        !cuentas.every(
+          (c) => c is Json && c['alias'] is String && c['estado'] is String,
+        )) {
+      throw FalloApi('La API no devolvió la lista de cuentas.');
+    }
+    return List<Json>.from(cuentas);
+  }
+
+  Future<void> crearPartido(Json partido, String clave) async {
+    await _enviar('POST', 'admin/partidos', datos: partido, clave: clave);
   }
 
   Future<List<Json>> movimientos() async {
