@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .apuestas import router
 from .cuentas import exigir_titular
 from .cuentas import router as cuentas
+from .movimientos import router as movimientos
 from .recuerdos import router as recuerdos
 
 app = FastAPI(
@@ -20,6 +21,7 @@ app.add_middleware(
     allow_headers=["Content-Type", "Idempotency-Key", "Authorization"],
 )
 app.include_router(cuentas)
+app.include_router(movimientos, dependencies=[Depends(exigir_titular)])
 app.include_router(router, dependencies=[Depends(exigir_titular)])
 app.include_router(recuerdos, dependencies=[Depends(exigir_titular)])
 
