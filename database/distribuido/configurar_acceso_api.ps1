@@ -92,8 +92,8 @@ if (-not (Test-Path $venv)) {
     py -3.13 -m venv .\cliente\.venv
     & $venv -m pip install -q -r .\cliente\requirements.txt 2>&1 | Out-Null
 }
-$env:BANKDOIT_PG_IMPAR_DSN = "host=$hostAPI hostaddr=$ipAPI port=$puertoA dbname=$baseBD user=bankdoit_api sslmode=verify-full sslrootcert=$ca"
-$env:BANKDOIT_PG_PAR_DSN   = "host=$hostAPI hostaddr=$ipAPI port=$puertoB dbname=$baseBD user=bankdoit_api sslmode=verify-full sslrootcert=$ca"
+$env:BANKDOIT_PG_IMPAR_DSN = "host=$hostAPI hostaddr=$ipAPI port=$puertoA dbname=$baseBD user=bankdoit_api sslmode=verify-full sslrootcert='$ca'"
+$env:BANKDOIT_PG_PAR_DSN   = "host=$hostAPI hostaddr=$ipAPI port=$puertoB dbname=$baseBD user=bankdoit_api sslmode=verify-full sslrootcert='$ca'"
 $env:BANKDOIT_PG_PASSWORD  = $cfg.BANKDOIT_API_PASSWORD
 $env:BANKDOIT_CA_NO_CONFIABLE = (Resolve-Path .\certs\ca_no_confiable.crt).Path -replace '\\', '/'
 $salidaPy = & $venv .\cliente\verificar_conexion_api.py 2>&1 | ForEach-Object { "$_" }
