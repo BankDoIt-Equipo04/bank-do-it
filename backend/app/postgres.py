@@ -3,7 +3,7 @@ import hashlib
 import os
 import secrets
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 import psycopg
@@ -12,7 +12,13 @@ from psycopg.rows import dict_row
 
 from .apuestas import Clave, Identificador, NuevaApuesta, Resolucion
 from .cuentas import (
-    DURACION_SEGUNDOS, ESQUEMA_HTTP, Credenciales, Portador, Registro, derivar, huella,
+    DURACION_SEGUNDOS,
+    ESQUEMA_HTTP,
+    Credenciales,
+    Portador,
+    Registro,
+    derivar,
+    huella,
 )
 
 cuentas_pg = APIRouter(prefix="/auth", tags=["Cuentas"])
@@ -79,7 +85,7 @@ def iniciar(datos: Credenciales, response: Response):
         if not cuenta or not secrets.compare_digest(candidato, cuenta["clave_derivada"]):
             raise HTTPException(401, "Alias o contraseña incorrectos.")
         token = secrets.token_urlsafe(32)
-        vence = datetime.now(timezone.utc) + timedelta(seconds=DURACION_SEGUNDOS)
+        vence = datetime.now(UTC) + timedelta(seconds=DURACION_SEGUNDOS)
         db.execute("SELECT crear_sesion(%s,%s,%s)", (huella(token), cuenta["usuario_id"], vence))
     response.headers["Cache-Control"] = "no-store"
     return {"usuario_id": cuenta["usuario_id"], "alias": cuenta["alias"], "access_token": token,

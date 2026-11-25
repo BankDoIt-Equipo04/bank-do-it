@@ -22,7 +22,7 @@ app.add_middleware(
     allow_headers=["Content-Type", "Idempotency-Key", "Authorization"],
 )
 if os.environ.get("BANKDOIT_BACKEND") == "postgres":
-    from .postgres import cuentas_pg, apuestas_pg
+    from .postgres import apuestas_pg, cuentas_pg
 
     app.include_router(cuentas_pg)
     app.include_router(apuestas_pg)
