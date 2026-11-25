@@ -162,6 +162,14 @@ class ApiApuestas {
       final j = jsonDecode(utf8.decode(res.bodyBytes)) as Json;
       if (res.statusCode >= 400) {
         final detalle = j['detail'];
+        if (res.statusCode == 404 &&
+            detalle == 'Not Found' &&
+            (ruta.endsWith('/bankroll/movimientos') ||
+                ruta.endsWith('/presupuesto'))) {
+          throw FalloApi(
+            'La API aún no tiene disponible esta función de Bankroll.',
+          );
+        }
         if (detalle is Map && detalle['exceso_centavos'] is int) {
           throw FalloApi(
             'Presupuesto actualizado',
@@ -191,6 +199,40 @@ class ApiApuestas {
         reintentar: true,
       );
     }
+  }
+
+  Future<List<Json>> movimientos() async {
+    final j = await _enviar('GET', 'usuarios/$usuario/bankroll/movimientos');
+    final filas = j['movimientos'];
+    if (filas is! List) {
+      throw FalloApi('La API no devolvió el historial de movimientos.');
+    }
+    for (final fila in filas) {
+      if (fila is! Json ||
+          fila['tipo'] is! String ||
+          (fila['creado_en'] != null && fila['creado_en'] is! String) ||
+          fila['cambio_disponible'] is! String) {
+        throw FalloApi('El formato de los movimientos recibidos no es válido.');
+      }
+    }
+    return List<Json>.from(filas);
+  }
+
+  Future<void> moverSaldo(String tipo, String monto, String clave) async {
+    await _enviar(
+      'POST',
+      'usuarios/$usuario/bankroll/movimientos',
+      datos: {'tipo': tipo, 'monto': monto},
+      clave: clave,
+    );
+  }
+
+  Future<void> cambiarLimite(String? limite) async {
+    await _enviar(
+      'PUT',
+      'usuarios/$usuario/bankroll/presupuesto',
+      datos: {'limite': limite},
+    );
   }
 
   Future<Uint8List?> foto(int id, {Uint8List? contenido}) async {

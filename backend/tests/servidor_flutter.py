@@ -1,5 +1,6 @@
 """Desde backend: python -m tests.servidor_flutter (base temporal para la prueba #10)."""
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -13,7 +14,7 @@ if __name__ == "__main__":
         ruta = Path(directorio) / "prueba.sqlite3"
         preparar(ruta)
         # Las cuentas nuevas de esta prueba usan el presupuesto del escenario #10.
-        with sqlite3.connect(ruta) as db:
+        with closing(sqlite3.connect(ruta)) as db, db:
             db.execute("""CREATE TRIGGER presupuesto_de_prueba AFTER INSERT ON bankroll
                           BEGIN INSERT INTO presupuesto(usuario_id, limite)
                           VALUES (NEW.usuario_id, 50000); END""")
