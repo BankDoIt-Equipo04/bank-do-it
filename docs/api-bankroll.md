@@ -16,18 +16,6 @@ Para el registro, usa un alias de 3 a 40 letras ASCII, números, puntos, guiones
 ## Consultar el saldo
 GET /usuarios/{usuario_id}/bankroll devuelve el saldo disponible y el monto en juego.
 
-## Contrato propuesto para la pantalla Bankroll (#36 y #37)
-
-Flutter usa la misma sesión y el mismo usuario que en «Mis apuestas». Estas son las rutas propuestas para la integración con el #36. Los importes JSON se expresan como cadenas con dos decimales.
-
-| Operación | Solicitud y resultado esperado |
-| --- | --- |
-| `GET /usuarios/{usuario_id}/bankroll/movimientos` | Devuelve `{"movimientos":[{"tipo":"retiro","fecha":"2026-11-24T12:00:00Z","cambio_disponible":"-30.00"}]}`, del más reciente al más antiguo. Una lista vacía indica que aún no hay movimientos. |
-| `POST /usuarios/{usuario_id}/bankroll/movimientos` | Recibe `{"tipo":"aportacion","monto":"50.00"}` o `{"tipo":"retiro","monto":"30.00"}`. Usa `Idempotency-Key`. Si Flutter pierde la respuesta, reenvía el mismo importe con la misma clave. Un retiro sin fondos devuelve 409 con `{"detail":"saldo_insuficiente"}`. |
-| `PUT /usuarios/{usuario_id}/presupuesto` | Recibe `{"limite":"250.00"}` y actualiza el presupuesto semanal de la cuenta. |
-
-Después de una escritura confirmada (respuesta 2xx con objeto JSON o 204), Flutter vuelve a consultar el historial y los movimientos. Para reproducir la prueba de interfaz con respuestas simuladas, ejecuta `flutter test test/bankroll_test.dart` desde `mobile`. Al integrar el #36, repitan con la API real la aportación, el retiro rechazado, el retiro válido y el cambio de límite.
-
 ## Registrar una apuesta
 POST /usuarios/{usuario_id}/apuestas
 
@@ -100,3 +88,5 @@ Desde `backend`, ejecuta `python -m app.datos_demo` para actualizar la base loca
 Cada movimiento incluye el tipo, los cambios en pesos en disponible y en juego, el identificador de apuesta cuando corresponde y la fecha UTC si se conoce. El saldo inicial figura al final. La ganancia deportiva suma los resultados de las apuestas resueltas. Las aportaciones, retiros y cambios al límite conservan esa ganancia y el importe apostado en la semana.
 
 Por ejemplo, un saldo inicial de $1,000, una apuesta ganada de $100 a cuota 2, una aportación de $250 y un retiro de $50 dejan $1,300 disponibles, $0 en juego y $100 de ganancia deportiva. Un retiro superior al disponible devuelve 409 con `{"detail":"saldo_insuficiente"}`. Flutter puede mostrar «El retiro supera tu saldo disponible». Un reintento con la misma clave y otro importe o tipo devuelve 409 con `{"detail":"clave_reutilizada"}`.
+
+Para verificar el #37 desde Flutter, inicia el servidor de pruebas con `python -m tests.servidor_flutter` desde `backend`. Desde `mobile` ejecuta `flutter test -d windows integration_test/bankroll_test.dart --dart-define=API_URL=http://127.0.0.1:18810`. Este recorrido usa la API con SQLite temporal.

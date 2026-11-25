@@ -210,7 +210,7 @@ class ApiApuestas {
     for (final fila in filas) {
       if (fila is! Json ||
           fila['tipo'] is! String ||
-          fila['fecha'] is! String ||
+          (fila['creado_en'] != null && fila['creado_en'] is! String) ||
           fila['cambio_disponible'] is! String) {
         throw FalloApi('El formato de los movimientos recibidos no es válido.');
       }
@@ -227,10 +227,10 @@ class ApiApuestas {
     );
   }
 
-  Future<void> cambiarLimite(String limite) async {
+  Future<void> cambiarLimite(String? limite) async {
     await _enviar(
       'PUT',
-      'usuarios/$usuario/presupuesto',
+      'usuarios/$usuario/bankroll/presupuesto',
       datos: {'limite': limite},
     );
   }

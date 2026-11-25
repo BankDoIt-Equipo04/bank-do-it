@@ -71,10 +71,11 @@ class _PantallaBankrollState extends State<PantallaBankroll> {
     final op = operacion;
     if (enviando || op == null) return;
     final valor = centavos(monto.text);
-    if (valor == null || (op != Operacion.limite && valor == 0)) {
+    final quitarLimite = op == Operacion.limite && monto.text.trim().isEmpty;
+    if (!quitarLimite && (valor == null || valor == 0)) {
       setState(
         () => aviso = op == Operacion.limite
-            ? 'Escribe un límite de cero o mayor, con hasta dos decimales.'
+            ? 'Escribe un límite positivo o deja el campo vacío para quitarlo.'
             : 'Escribe un monto positivo con hasta dos decimales.',
       );
       return;
@@ -85,9 +86,9 @@ class _PantallaBankrollState extends State<PantallaBankroll> {
     });
     try {
       if (op == Operacion.limite) {
-        await widget.api.cambiarLimite(decimal(valor));
+        await widget.api.cambiarLimite(quitarLimite ? null : decimal(valor!));
       } else {
-        await widget.api.moverSaldo(op.name, decimal(valor), clave!);
+        await widget.api.moverSaldo(op.name, decimal(valor!), clave!);
       }
       if (!mounted) return;
       setState(() {
@@ -144,6 +145,9 @@ class _PantallaBankrollState extends State<PantallaBankroll> {
             readOnly: enviando || incierta,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
+              helperText: op == Operacion.limite
+                  ? 'Deja el campo vacío para quitar el límite.'
+                  : null,
               labelText: op == Operacion.limite
                   ? 'Nuevo límite semanal'
                   : 'Monto de ${op.nombre.toLowerCase()}',
@@ -215,7 +219,9 @@ class _PantallaBankrollState extends State<PantallaBankroll> {
                       'liquidacion' => 'Liquidación de apuesta',
                       _ => 'Movimiento',
                     }),
-                    subtitle: Text(fila['fecha'].toString()),
+                    subtitle: fila['creado_en'] == null
+                        ? null
+                        : Text(fila['creado_en']),
                     trailing: Text(dinero(fila['cambio_disponible'])),
                   ),
               ],

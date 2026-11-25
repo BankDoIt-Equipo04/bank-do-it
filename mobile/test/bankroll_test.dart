@@ -38,7 +38,7 @@ void main() {
             200,
           );
         }
-        if (ruta == '/usuarios/8/presupuesto' && req.method == 'PUT') {
+        if (ruta == '/usuarios/8/bankroll/presupuesto' && req.method == 'PUT') {
           limite = centavos(jsonDecode(req.body)['limite'])!;
           return http.Response('', 204);
         }
@@ -59,7 +59,7 @@ void main() {
           filas.add({
             'tipo': b['tipo'],
             'cambio_disponible': retiro ? '-${b['monto']}' : b['monto'],
-            'fecha': '2026-11-24',
+            'creado_en': '2026-11-24',
           });
           if (!retiro && respuestaPerdida == null) {
             respuestaPerdida = clave;
