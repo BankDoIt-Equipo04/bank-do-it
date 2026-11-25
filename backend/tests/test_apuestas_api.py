@@ -143,3 +143,78 @@ def test_recuerdo_persiste_solo_en_su_apuesta(demo):
     assert cliente.get(otro).status_code == 404
     assert cliente.put(otro, content=foto.getvalue()).status_code == 404
     assert cliente.get(SALDO).json() == antes
+
+
+def test_movimientos_y_ganancia_separada(demo):
+    cliente, _ = demo
+    url = SALDO + "/movimientos"
+    apuesta = enviar(cliente).json()["apuesta"]["id"]
+    assert cliente.get(url).json()["ganancia_deportiva"] == "0.00"
+    assert cliente.put(f"{URL}/{apuesta}/resultado", json={"resultado": "ganada"}).status_code == 200
+    cabecera = {"Idempotency-Key": "recarga"}
+    datos = {"tipo": "aportacion", "monto": "250.25"}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        respuestas = list(pool.map(lambda _: cliente.post(url, headers=cabecera, json=datos), range(2)))
+    assert sorted(r.status_code for r in respuestas) == [200, 201]
+    assert respuestas[0].json() == respuestas[1].json()
+    assert cliente.post(url, headers=cabecera, json={**datos, "tipo": "retiro"}).status_code == 409
+    retiro = cliente.post(url, headers={"Idempotency-Key": "retiro"}, json={"tipo": "retiro", "monto": "50.25"})
+    assert retiro.json()["bankroll"]["disponible"] == "1300.00"
+    historial = cliente.get(url).json()
+    assert historial["ganancia_deportiva"] == "100.00"
+    assert [m["tipo"] for m in historial["movimientos"]] == [
+        "retiro", "aportacion", "liquidacion", "reserva", "saldo_inicial"]
+    assert historial["presupuesto"]["usado_centavos"] == 10000
+    assert cliente.get(SALDO).json() == historial["bankroll"]
+    assert cliente.get("/usuarios/3/historial").json()["bankroll"] == historial["bankroll"]
+
+
+def test_retiros_compiten_por_el_disponible(demo):
+    cliente, _ = demo
+    enviar(cliente)
+    url = SALDO + "/movimientos"
+    def retirar(clave):
+        return cliente.post(url, headers={"Idempotency-Key": clave}, json={"tipo": "retiro", "monto": "600"})
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        respuestas = list(pool.map(retirar, ("uno", "dos")))
+    assert sorted(r.status_code for r in respuestas) == [201, 409]
+    assert next(r for r in respuestas if r.status_code == 409).json()["detail"] == "saldo_insuficiente"
+    assert cliente.get(SALDO).json() == {"disponible": "300.00", "en_juego": "100.00"}
+    assert len(cliente.get(url).json()["movimientos"]) == 3
+
+
+def test_presupuesto_y_aislamiento(demo):
+    cliente, ruta = demo
+    url = SALDO + "/presupuesto"
+    assert cliente.put(url, json={"limite": "25.50"}).json() == {"limite_centavos": 2550, "usado_centavos": 0}
+    assert enviar(cliente, exceso_aceptado="0").json()["detail"] == {"exceso_centavos": 7450}
+    assert cliente.put(url, json={"limite": "-1"}).status_code == 422
+    assert cliente.put(url, json={"limite": None}).json()["limite_centavos"] is None
+    preparar(ruta)
+    assert cliente.get("/usuarios/3/historial").json()["presupuesto"]["limite_centavos"] is None
+    assert enviar(cliente, exceso_aceptado="0").status_code == 201
+    url_ajena = "/usuarios/4/bankroll"
+    assert cliente.get(url_ajena + "/movimientos").status_code == 404
+    assert cliente.put(url_ajena + "/presupuesto", json={"limite": 1}).status_code == 404
+    assert cliente.post(url_ajena + "/movimientos", headers={"Idempotency-Key": "x"},
+                        json={"tipo": "retiro", "monto": 1}).status_code == 404
+
+
+def test_actualizar_base_anterior_con_apuesta_resuelta(demo):
+    cliente, ruta = demo
+    apuesta = enviar(cliente).json()["apuesta"]["id"]
+    assert cliente.put(f"{URL}/{apuesta}/resultado", json={"resultado": "perdida"}).status_code == 200
+    with closing(sqlite3.connect(ruta)) as db, db:
+        db.execute("ALTER TABLE movimiento RENAME TO nuevo")
+        db.execute("""CREATE TABLE movimiento (
+                   apuesta_id INTEGER NOT NULL, tipo TEXT NOT NULL, cambio_disponible INTEGER NOT NULL,
+                   cambio_en_juego INTEGER NOT NULL, PRIMARY KEY (apuesta_id, tipo))""")
+        db.execute("""INSERT INTO movimiento SELECT apuesta_id, tipo, cambio_disponible, cambio_en_juego
+                      FROM nuevo ORDER BY id""")
+        db.execute("DROP TABLE nuevo")
+    preparar(ruta)
+    preparar(ruta)
+    historial = cliente.get(SALDO + "/movimientos").json()
+    assert historial["ganancia_deportiva"] == "-100.00"
+    assert historial["bankroll"] == {"disponible": "900.00", "en_juego": "0.00"}
+    assert [m["tipo"] for m in historial["movimientos"]] == ["liquidacion", "reserva", "saldo_inicial"]

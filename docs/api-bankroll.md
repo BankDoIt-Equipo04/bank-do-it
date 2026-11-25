@@ -74,3 +74,17 @@ $resuelta.bankroll
 ```
 
 En la primera ejecución, el registro devuelve `{"disponible":"900.00","en_juego":"100.00"}`, el reenvío imprime `True` y la liquidación devuelve `{"disponible":"1100.00","en_juego":"0.00"}`. La respuesta de registro incluye el objeto `apuesta` (id, partido, selección, monto, cuota y estado) y el objeto `bankroll`. El primer envío devuelve 201 y repetirlo devuelve 200. Para comprobar las tres resoluciones con datos iniciales independientes, ejecutar `python -m pytest -q`.
+
+## Movimientos y presupuesto para la pantalla Bankroll (#37)
+
+Desde `backend`, ejecuta `python -m app.datos_demo` para actualizar la base local antes de iniciar la API. Las tres rutas usan la sesión de la cuenta y el prefijo `/usuarios/{usuario_id}/bankroll`.
+
+| Método y ruta bajo el prefijo | Uso desde Flutter |
+| --- | --- |
+| `GET /movimientos` | Devuelve `bankroll`, `ganancia_deportiva`, `presupuesto` y la lista `movimientos` del más reciente al más antiguo. |
+| `POST /movimientos` | Envía `{"tipo":"aportacion","monto":"250.00"}` o `{"tipo":"retiro","monto":"50.00"}` con `Idempotency-Key`. El primer envío devuelve 201 con `movimiento_id` y `bankroll`; un reenvío idéntico, 200 con el mismo id. Usa una clave nueva para cada operación. |
+| `PUT /presupuesto` | Envía `{"limite":"500.00"}` para fijar el límite semanal o `{"limite":null}` para quitarlo. Devuelve `limite_centavos` y `usado_centavos`. |
+
+Cada movimiento incluye el tipo, los cambios en pesos en disponible y en juego, el identificador de apuesta cuando corresponde y la fecha UTC si se conoce. El saldo inicial figura al final. La ganancia deportiva suma los resultados de las apuestas resueltas. Las aportaciones, retiros y cambios al límite conservan esa ganancia y el importe apostado en la semana.
+
+Por ejemplo, un saldo inicial de $1,000, una apuesta ganada de $100 a cuota 2, una aportación de $250 y un retiro de $50 dejan $1,300 disponibles, $0 en juego y $100 de ganancia deportiva. Un retiro superior al disponible devuelve 409 con `{"detail":"saldo_insuficiente"}`. Flutter puede mostrar «El retiro supera tu saldo disponible». Un reintento con la misma clave y otro importe o tipo devuelve 409 con `{"detail":"clave_reutilizada"}`.
