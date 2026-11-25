@@ -1,3 +1,4 @@
+import os
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -5,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .apuestas import router
 from .cuentas import exigir_titular
 from .cuentas import router as cuentas
+from .movimientos import router as movimientos
 from .recuerdos import router as recuerdos
 
 app = FastAPI(
@@ -19,9 +21,16 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT"],
     allow_headers=["Content-Type", "Idempotency-Key", "Authorization"],
 )
-app.include_router(cuentas)
-app.include_router(router, dependencies=[Depends(exigir_titular)])
-app.include_router(recuerdos, dependencies=[Depends(exigir_titular)])
+if os.environ.get("BANKDOIT_BACKEND") == "postgres":
+    from .postgres import apuestas_pg, cuentas_pg
+
+    app.include_router(cuentas_pg)
+    app.include_router(apuestas_pg)
+else:
+    app.include_router(cuentas)
+    app.include_router(movimientos, dependencies=[Depends(exigir_titular)])
+    app.include_router(router, dependencies=[Depends(exigir_titular)])
+    app.include_router(recuerdos, dependencies=[Depends(exigir_titular)])
 
 
 @app.get("/health")

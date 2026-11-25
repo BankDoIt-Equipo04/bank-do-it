@@ -75,6 +75,19 @@ BEGIN
               JOIN equipo ev ON ev.equipo_id = p.equipo_visitante_id), '[]'::JSONB));
 END $$;
 
+-- Permite reanudar un registro interrumpido sin adoptar un bankroll ajeno.
+CREATE OR REPLACE FUNCTION asegurar_usuario_api(p_id BIGINT, p_alias VARCHAR,
+                                                 p_marca TEXT, p_saldo NUMERIC)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+    PERFORM crear_usuario(p_alias, p_marca, p_saldo, NULL, 'usuario', p_id);
+EXCEPTION WHEN unique_violation THEN
+    IF NOT EXISTS (SELECT 1 FROM usuario WHERE usuario_id = p_id AND alias = p_alias
+                   AND hash_contrasena = p_marca) THEN
+        RAISE EXCEPTION 'alias_duplicado';
+    END IF;
+END $$;
+
 -- Alias: mismas reglas que valida la API (letras ASCII, números, punto,
 -- guion y guion bajo). Antes no se aceptaba el guion.
 ALTER TABLE usuario DROP CONSTRAINT IF EXISTS ck_usuario_alias;
@@ -139,6 +152,7 @@ GRANT SELECT ON deporte, equipo, partido, fragmento_local TO bankdoit_api;
 
 -- Operaciones de negocio permitidas.
 GRANT EXECUTE ON FUNCTION
+    asegurar_usuario_api(BIGINT, VARCHAR, TEXT, NUMERIC),
     crear_usuario(VARCHAR, TEXT, NUMERIC, NUMERIC, VARCHAR, BIGINT),
     registrar_apuesta(BIGINT, VARCHAR, BIGINT, VARCHAR, NUMERIC, NUMERIC, VARCHAR),
     resolver_apuesta(BIGINT, BIGINT, VARCHAR),

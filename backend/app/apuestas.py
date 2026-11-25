@@ -54,8 +54,7 @@ def obtener_saldo(db, usuario_id):
     fila = db.execute("""
         SELECT b.inicial + COALESCE(SUM(m.cambio_disponible), 0) AS disponible,
                COALESCE(SUM(m.cambio_en_juego), 0) AS en_juego
-        FROM bankroll b LEFT JOIN apuesta a ON a.usuario_id = b.usuario_id
-        LEFT JOIN movimiento m ON m.apuesta_id = a.id
+        FROM bankroll b LEFT JOIN movimiento m ON m.usuario_id = b.usuario_id
         WHERE b.usuario_id = ? GROUP BY b.usuario_id
     """, (usuario_id,)).fetchone()
     if fila is None:
@@ -146,7 +145,8 @@ def registrar(usuario_id: Identificador, datos: NuevaApuesta, clave: Clave, ruta
             INSERT INTO apuesta (usuario_id, clave, partido_id, seleccion, monto, cuota, estado, creada)
             VALUES (?, ?, ?, ?, ?, ?, 'pendiente', CURRENT_TIMESTAMP)
         """, (usuario_id, clave, datos.partido_id, datos.seleccion, monto, cuota)).lastrowid
-        db.execute("INSERT INTO movimiento VALUES (?, 'reserva', ?, ?)", (apuesta_id, -monto, monto))
+        db.execute("""INSERT INTO movimiento (usuario_id, apuesta_id, tipo, cambio_disponible, cambio_en_juego)
+                      VALUES (?, ?, 'reserva', ?, ?)""", (usuario_id, apuesta_id, -monto, monto))
         return respuesta(db, usuario_id, apuesta_id)
 
 
@@ -169,5 +169,6 @@ def resolver(usuario_id: Identificador, apuesta_id: Identificador, datos: Resolu
         elif datos.resultado == "anulada":
             retorno = monto
         db.execute("UPDATE apuesta SET estado = ? WHERE id = ?", (datos.resultado, apuesta_id))
-        db.execute("INSERT INTO movimiento VALUES (?, 'liquidacion', ?, ?)", (apuesta_id, retorno, -monto))
+        db.execute("""INSERT INTO movimiento (usuario_id, apuesta_id, tipo, cambio_disponible, cambio_en_juego)
+                      VALUES (?, ?, 'liquidacion', ?, ?)""", (usuario_id, apuesta_id, retorno, -monto))
         return respuesta(db, usuario_id, apuesta_id)
