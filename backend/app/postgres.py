@@ -9,6 +9,7 @@ from typing import Annotated
 import psycopg
 from fastapi import APIRouter, Depends, HTTPException, Response
 from psycopg.rows import dict_row
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .apuestas import Clave, Identificador, NuevaApuesta, Resolucion
 from .cuentas import (
@@ -22,7 +23,10 @@ from .cuentas import (
 )
 
 cuentas_pg = APIRouter(prefix="/auth", tags=["Cuentas"])
+admin_pg = APIRouter(prefix="/admin", tags=["Administración"])
 ERRORES = {
+    "partido_duplicado": 409, "equipos_invalidos": 422,
+    "administrador_requerido": 403, "sesion_invalida": 401,
     "alias_duplicado": 409, "cuenta_no_activa": 403, "usuario_inexistente": 404,
     "apuesta_inexistente": 404, "partido_inexistente": 404, "partido_no_disponible": 409,
     "saldo_insuficiente": 409, "clave_reutilizada": 409, "resultado_en_conflicto": 409,
@@ -103,6 +107,28 @@ def sesion(credencial: Portador):
 
 
 SesionPG = Annotated[tuple, Depends(sesion)]
+
+
+@admin_pg.get("/cuentas")
+def listar_cuentas(actual: SesionPG):
+    with conexion() as db:
+        return db.execute("SELECT alias, estado FROM listar_cuentas_admin(%s)", (actual[1],)).fetchall()
+
+
+class NuevoPartido(BaseModel):
+    deporte_id: int = Field(gt=0, le=32767)
+    equipo_local_id: int = Field(gt=0, le=2**63 - 1)
+    equipo_visitante_id: int = Field(gt=0, le=2**63 - 1)
+    fecha_hora: AwareDatetime
+
+
+@admin_pg.post("/partidos", status_code=201)
+def crear_partido(datos: NuevoPartido, actual: SesionPG):
+    with conexion() as db:
+        return db.execute(
+            "SELECT crear_partido_admin(%s,%s::smallint,%s,%s,%s) AS partido_id",
+            (actual[1], datos.deporte_id, datos.equipo_local_id, datos.equipo_visitante_id, datos.fecha_hora),
+        ).fetchone()
 
 
 @cuentas_pg.post("/logout", status_code=204)
