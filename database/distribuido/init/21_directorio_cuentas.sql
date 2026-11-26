@@ -118,6 +118,24 @@ BEGIN
     RETURN FOUND;
 END $$;
 
+-- Lista del directorio para la pantalla de administración.
+CREATE OR REPLACE FUNCTION listar_cuentas_admin(p_huella BYTEA)
+RETURNS TABLE (alias VARCHAR, estado VARCHAR)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE
+    v_id BIGINT := validar_sesion(p_huella);
+BEGIN
+    IF v_id IS NULL THEN
+        RAISE EXCEPTION 'sesion_invalida';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM cuenta c WHERE c.usuario_id = v_id AND c.rol = 'administrador') THEN
+        RAISE EXCEPTION 'administrador_requerido';
+    END IF;
+    RETURN QUERY SELECT c.alias, c.estado FROM cuenta c ORDER BY lower(c.alias), c.usuario_id;
+END $$;
+REVOKE ALL ON FUNCTION listar_cuentas_admin(BYTEA) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION listar_cuentas_admin(BYTEA) TO bankdoit_api;
+
 REVOKE ALL ON cuenta, sesion FROM PUBLIC, bankdoit_api;
 REVOKE EXECUTE ON FUNCTION registrar_cuenta(VARCHAR, BYTEA, BYTEA), activar_cuenta(BIGINT),
     buscar_cuenta(VARCHAR), crear_sesion(BYTEA, BIGINT, TIMESTAMPTZ),

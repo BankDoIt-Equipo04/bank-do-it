@@ -22,7 +22,9 @@ from .cuentas import (
 )
 
 cuentas_pg = APIRouter(prefix="/auth", tags=["Cuentas"])
+admin_pg = APIRouter(prefix="/admin", tags=["Administración"])
 ERRORES = {
+    "administrador_requerido": 403, "sesion_invalida": 401,
     "alias_duplicado": 409, "cuenta_no_activa": 403, "usuario_inexistente": 404,
     "apuesta_inexistente": 404, "partido_inexistente": 404, "partido_no_disponible": 409,
     "saldo_insuficiente": 409, "clave_reutilizada": 409, "resultado_en_conflicto": 409,
@@ -103,6 +105,12 @@ def sesion(credencial: Portador):
 
 
 SesionPG = Annotated[tuple, Depends(sesion)]
+
+
+@admin_pg.get("/cuentas")
+def listar_cuentas(actual: SesionPG):
+    with conexion() as db:
+        return db.execute("SELECT alias, estado FROM listar_cuentas_admin(%s)", (actual[1],)).fetchall()
 
 
 @cuentas_pg.post("/logout", status_code=204)
