@@ -11,7 +11,14 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from psycopg.rows import dict_row
 from pydantic import AwareDatetime, BaseModel, Field
 
-from .apuestas import Clave, Identificador, NuevaApuesta, Resolucion
+from .apuestas import (
+    Clave,
+    Identificador,
+    NuevaApuesta,
+    Origen,
+    Resolucion,
+    filtrar_apuestas,
+)
 from .cuentas import (
     DURACION_SEGUNDOS,
     ESQUEMA_HTTP,
@@ -152,9 +159,11 @@ def historial_db(db, uid):
 
 
 @apuestas_pg.get("/historial")
-def historial(usuario_id: Identificador):
+def historial(usuario_id: Identificador, origen: Origen | None = None, deporte: str | None = None):
     with conexion(usuario_id) as db:
-        return historial_db(db, usuario_id)
+        actual = historial_db(db, usuario_id)
+        actual["apuestas"] = filtrar_apuestas(actual["apuestas"], actual["partidos"], origen, deporte)
+        return actual
 
 
 @apuestas_pg.get("/bankroll")
@@ -173,11 +182,14 @@ def respuesta(historial, apuesta_id):
 @apuestas_pg.post("/apuestas", status_code=201)
 def apostar(usuario_id: Identificador, datos: NuevaApuesta, clave: Clave, response: Response):
     with conexion(usuario_id) as db:
-        fila = db.execute("SELECT * FROM registrar_apuesta(%s,%s,%s,%s,%s,%s)",
+        fila = db.execute("SELECT * FROM registrar_apuesta(%s,%s,%s,%s,%s,%s,%s)",
                           (usuario_id, clave, datos.partido_id, datos.seleccion,
-                           datos.monto, datos.cuota)).fetchone()
+                           datos.monto, datos.cuota, datos.origen)).fetchone()
         actual = historial_db(db, usuario_id)
+        resultado = respuesta(actual, fila["apuesta_id"])
         if fila["es_reenvio"]:
+            if resultado["apuesta"]["origen"] != datos.origen:
+                raise HTTPException(409, "clave_reutilizada")
             response.status_code = 200
         elif datos.exceso_aceptado is not None:
             presupuesto = actual["presupuesto"]
@@ -186,7 +198,7 @@ def apostar(usuario_id: Identificador, datos: NuevaApuesta, clave: Clave, respon
                 exceso = presupuesto["usado_centavos"] - limite
                 if exceso > datos.exceso_aceptado * 100:
                     raise HTTPException(409, {"exceso_centavos": exceso})
-        return respuesta(actual, fila["apuesta_id"])
+        return resultado
 
 
 @apuestas_pg.put("/apuestas/{apuesta_id}/resultado")

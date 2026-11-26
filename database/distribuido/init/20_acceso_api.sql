@@ -61,7 +61,7 @@ BEGIN
             SELECT jsonb_agg(jsonb_build_object(
                        'id', a.apuesta_id, 'partido_id', a.partido_id,
                        'seleccion', a.seleccion, 'monto', a.monto::TEXT,
-                       'cuota', a.cuota::TEXT, 'estado', a.estado)
+                       'cuota', a.cuota::TEXT, 'estado', a.estado, 'origen', a.origen)
                    ORDER BY a.apuesta_id DESC)
               FROM apuesta a WHERE a.usuario_id = p_usuario_id), '[]'::JSONB),
         'partidos', COALESCE((

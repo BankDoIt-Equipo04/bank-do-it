@@ -218,3 +218,25 @@ def test_actualizar_base_anterior_con_apuesta_resuelta(demo):
     assert historial["ganancia_deportiva"] == "-100.00"
     assert historial["bankroll"] == {"disponible": "900.00", "en_juego": "0.00"}
     assert [m["tipo"] for m in historial["movimientos"]] == ["liquidacion", "reserva", "saldo_inicial"]
+
+
+def test_historial_por_origen_y_deporte_conserva_bankroll(demo):
+    cliente, _ = demo
+    assert enviar(cliente, "uno", origen=" App A ").status_code == 201
+    assert enviar(cliente, "uno", origen="App A").status_code == 200
+    assert enviar(cliente, "uno", origen="App B").status_code == 409
+    assert enviar(cliente, "dos", origen="App A", partido_id=202).status_code == 201
+    assert enviar(cliente, "tres").status_code == 201
+    url = "/usuarios/3/historial"
+    total = cliente.get(url).json()
+    assert [a["origen"] for a in total["apuestas"]] == [None, "App A", "App A"]
+    for filtros, partidos in [
+        ({"origen": "App A"}, [202, 101]),
+        ({"deporte": "Fútbol"}, [101, 101]),
+        ({"origen": "App A", "deporte": "fútbol"}, [101]),
+        ({"origen": "App B"}, []),
+    ]:
+        vista = cliente.get(url, params=filtros).json()
+        assert [a["partido_id"] for a in vista["apuestas"]] == partidos
+        for campo in ("bankroll", "presupuesto", "partidos"):
+            assert vista[campo] == total[campo]

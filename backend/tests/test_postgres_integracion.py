@@ -25,7 +25,7 @@ def test_apuestas_en_ambos_fragmentos():
         assert login.status_code == 200, login.text
         headers = {"Authorization": "Bearer " + login.json()["access_token"], "Idempotency-Key": "apuesta-100"}
         ruta = f"/usuarios/{uid}"
-        apuesta = {"partido_id": 101, "seleccion": "Local", "monto": 100, "cuota": 2}
+        apuesta = {"partido_id": 101, "seleccion": "Local", "monto": 100, "cuota": 2, "origen": "App A"}
         primera = cliente.post(ruta + "/apuestas", json=apuesta, headers=headers)
         segunda = cliente.post(ruta + "/apuestas", json=apuesta, headers=headers)
         assert primera.status_code == 201, primera.text
@@ -34,6 +34,14 @@ def test_apuestas_en_ambos_fragmentos():
         historial = cliente.get(ruta + "/historial", headers=headers).json()
         assert len(historial["apuestas"]) == 1
         assert historial["bankroll"] == {"disponible": "900.00", "en_juego": "100.00"}
+        assert historial["apuestas"][0]["origen"] == "App A"
+        for deporte, cantidad in [("Fútbol", 1), ("Fútbol americano", 0)]:
+            vista = cliente.get(ruta + "/historial", headers=headers,
+                                params={"origen": "App A", "deporte": deporte}).json()
+            assert len(vista["apuestas"]) == cantidad
+            assert vista["bankroll"] == historial["bankroll"]
+        conflicto = cliente.post(ruta + "/apuestas", json={**apuesta, "origen": "App B"}, headers=headers)
+        assert conflicto.status_code == 409
         with conexion(uid) as db:
             assert db.execute("SELECT nombre FROM fragmento_local").fetchone()["nombre"] == (
                 "impar" if uid % 2 else "par")
