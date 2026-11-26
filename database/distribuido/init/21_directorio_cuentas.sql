@@ -119,8 +119,8 @@ BEGIN
 END $$;
 
 -- Lista del directorio para la pantalla de administración.
-CREATE OR REPLACE FUNCTION listar_cuentas_admin(p_huella BYTEA)
-RETURNS TABLE (alias VARCHAR, estado VARCHAR)
+CREATE OR REPLACE FUNCTION exigir_administrador(p_huella BYTEA)
+RETURNS VOID
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
     v_id BIGINT := validar_sesion(p_huella);
@@ -131,10 +131,38 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM cuenta c WHERE c.usuario_id = v_id AND c.rol = 'administrador') THEN
         RAISE EXCEPTION 'administrador_requerido';
     END IF;
+END $$;
+REVOKE ALL ON FUNCTION exigir_administrador(BYTEA) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION listar_cuentas_admin(p_huella BYTEA)
+RETURNS TABLE (alias VARCHAR, estado VARCHAR)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+    PERFORM exigir_administrador(p_huella);
     RETURN QUERY SELECT c.alias, c.estado FROM cuenta c ORDER BY lower(c.alias), c.usuario_id;
 END $$;
 REVOKE ALL ON FUNCTION listar_cuentas_admin(BYTEA) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION listar_cuentas_admin(BYTEA) TO bankdoit_api;
+
+CREATE OR REPLACE FUNCTION crear_partido_admin(p_huella BYTEA, p_deporte SMALLINT,
+    p_local BIGINT, p_visitante BIGINT, p_fecha TIMESTAMPTZ)
+RETURNS BIGINT LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE
+    v_id BIGINT;
+BEGIN
+    PERFORM exigir_administrador(p_huella);
+    INSERT INTO partido (deporte_id, equipo_local_id, equipo_visitante_id, fecha_hora)
+    VALUES (p_deporte, p_local, p_visitante, p_fecha)
+    ON CONFLICT ON CONSTRAINT uq_partido DO NOTHING RETURNING partido_id INTO v_id;
+    IF v_id IS NULL THEN
+        RAISE EXCEPTION 'partido_duplicado';
+    END IF;
+    RETURN v_id;
+EXCEPTION WHEN foreign_key_violation OR check_violation THEN
+    RAISE EXCEPTION 'equipos_invalidos';
+END $$;
+REVOKE ALL ON FUNCTION crear_partido_admin(BYTEA, SMALLINT, BIGINT, BIGINT, TIMESTAMPTZ) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION crear_partido_admin(BYTEA, SMALLINT, BIGINT, BIGINT, TIMESTAMPTZ) TO bankdoit_api;
 
 REVOKE ALL ON cuenta, sesion FROM PUBLIC, bankdoit_api;
 REVOKE EXECUTE ON FUNCTION registrar_cuenta(VARCHAR, BYTEA, BYTEA), activar_cuenta(BIGINT),
