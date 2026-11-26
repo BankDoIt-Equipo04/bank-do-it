@@ -240,3 +240,21 @@ def test_historial_por_origen_y_deporte_conserva_bankroll(demo):
         assert [a["partido_id"] for a in vista["apuestas"]] == partidos
         for campo in ("bankroll", "presupuesto", "partidos"):
             assert vista[campo] == total[campo]
+
+
+def test_resultados_segun_orden_de_liquidacion(demo):
+    cliente, _ = demo
+    url = "/usuarios/3/resultados"
+    assert cliente.get("/usuarios/4/resultados").status_code == 404
+    assert cliente.get(url).json()["evolucion"][0]["disponible"] == "1000.00"
+    for n, estado in enumerate(("ganada", "anulada", "ganada", "perdida")):
+        apuesta = enviar(cliente, str(n)).json()["apuesta"]
+        assert cliente.put(f"{URL}/{apuesta['id']}/resultado", json={"resultado": estado}).status_code == 200
+    enviar(cliente, "pendiente", partido_id=202)
+    r = cliente.get(url).json()
+    assert r["bankroll"] == cliente.get(SALDO).json()
+    assert r["evolucion"][-1]["disponible"] == "1000.00"
+    assert r["ganancia_neta"] == "100.00"
+    assert r["roi_por_deporte"] == [{"deporte": "Fútbol", "monto_resuelto": "300.00",
+                                     "ganancia_neta": "100.00", "roi_porcentaje": "33.33"}]
+    assert r["rachas"] == {"actual": "perdida", "longitud": 1, "maxima_ganadora": 2, "maxima_perdedora": 1}

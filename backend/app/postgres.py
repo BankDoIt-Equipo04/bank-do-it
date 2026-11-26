@@ -28,6 +28,7 @@ from .cuentas import (
     derivar,
     huella,
 )
+from .resultados import resultados_personales
 
 cuentas_pg = APIRouter(prefix="/auth", tags=["Cuentas"])
 admin_pg = APIRouter(prefix="/admin", tags=["Administración"])
@@ -206,3 +207,10 @@ def resolver(usuario_id: Identificador, apuesta_id: Identificador, datos: Resolu
     with conexion(usuario_id) as db:
         db.execute("SELECT * FROM resolver_apuesta(%s,%s,%s)", (usuario_id, apuesta_id, datos.resultado))
         return respuesta(historial_db(db, usuario_id), apuesta_id)
+
+
+@apuestas_pg.get("/resultados")
+def mis_resultados(usuario_id: Identificador):
+    with conexion(usuario_id) as db:
+        filas = db.execute("SELECT * FROM movimientos_resultados(%s) ORDER BY movimiento_id", (usuario_id,))
+        return resultados_personales(filas)

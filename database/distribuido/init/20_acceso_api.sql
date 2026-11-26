@@ -122,6 +122,19 @@ ALTER FUNCTION tg_apuesta_con_movimiento()
 -- ---------------------------------------------------------------------
 -- 3. Nadie ejecuta funciones ni se conecta por omisión (PUBLIC).
 -- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION movimientos_resultados(p_usuario BIGINT)
+RETURNS TABLE (movimiento_id BIGINT, fecha TIMESTAMPTZ, tipo VARCHAR, disponible BIGINT,
+               en_juego BIGINT, estado VARCHAR, deporte VARCHAR)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+    SELECT m.movimiento_id, m.creado_en, m.tipo, (100 * m.cambio_disponible)::BIGINT,
+           (100 * m.cambio_en_juego)::BIGINT, a.estado, d.nombre
+      FROM movimiento m
+      LEFT JOIN apuesta a ON a.apuesta_id = m.apuesta_id AND a.usuario_id = m.usuario_id
+      LEFT JOIN partido p USING (partido_id)
+      LEFT JOIN deporte d USING (deporte_id)
+     WHERE m.usuario_id = p_usuario;
+$$;
+
 REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
@@ -152,6 +165,7 @@ GRANT SELECT ON deporte, equipo, partido, fragmento_local TO bankdoit_api;
 
 -- Operaciones de negocio permitidas.
 GRANT EXECUTE ON FUNCTION
+    movimientos_resultados(BIGINT),
     asegurar_usuario_api(BIGINT, VARCHAR, TEXT, NUMERIC),
     crear_usuario(VARCHAR, TEXT, NUMERIC, NUMERIC, VARCHAR, BIGINT),
     registrar_apuesta(BIGINT, VARCHAR, BIGINT, VARCHAR, NUMERIC, NUMERIC, VARCHAR),

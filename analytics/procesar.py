@@ -57,7 +57,9 @@ def resumir(contenido):
         resumenes.append({"deporte": deporte, "apuestas": len(grupo),
                           "monto_centavos": int(grupo.centavos.sum()),
                           "por_estado": {e: int(grupo.estado.eq(e).sum()) for e in ESTADOS}})
-    return {"auditoria": auditoria, "por_deporte": resumenes}
+    por_partido = [{"partido_id": partido, "apuestas": int(cantidad)}
+                   for partido, cantidad in datos.groupby("partido_id", sort=True).size().items()]
+    return {"auditoria": auditoria, "por_deporte": resumenes, "por_partido": por_partido}
 
 
 def main():
@@ -67,7 +69,7 @@ def main():
     args = parser.parse_args()
     contenido = args.csv.read_bytes()
     resumen = resumir(contenido)
-    print(json.dumps(resumen, indent=2, ensure_ascii=False))
+    print(json.dumps({k: v for k, v in resumen.items() if k != "por_partido"}, indent=2, ensure_ascii=False))
     if args.solo_validar:
         return
     # Una publicación atómica por archivo. Reprocesarlo conserva su primer corte.
