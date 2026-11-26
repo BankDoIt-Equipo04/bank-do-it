@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, StringConstraints
 
 from .bankroll import Bankroll, SaldoInsuficienteError
 from .datos_demo import ruta_demo
+from .resultados import resultados_personales
 
 router = APIRouter(prefix="/usuarios/{usuario_id}", tags=["Apuestas"])
 Identificador = Annotated[int, PathParam(gt=0, le=2**63 - 1)]
@@ -185,3 +186,22 @@ def resolver(usuario_id: Identificador, apuesta_id: Identificador, datos: Resolu
         db.execute("""INSERT INTO movimiento (usuario_id, apuesta_id, tipo, cambio_disponible, cambio_en_juego)
                       VALUES (?, ?, 'liquidacion', ?, ?)""", (usuario_id, apuesta_id, retorno, -monto))
         return respuesta(db, usuario_id, apuesta_id)
+
+
+@router.get("/resultados")
+def mis_resultados(usuario_id: Identificador, ruta: Ruta):
+    with transaccion(ruta) as db:
+        inicial = db.execute("SELECT inicial FROM bankroll WHERE usuario_id = ?", (usuario_id,)).fetchone()
+        if inicial is None:
+            raise HTTPException(404, "Usuario sin bankroll.")
+        movimientos = [{"fecha": None, "tipo": "saldo_inicial", "disponible": inicial[0], "en_juego": 0}]
+        filas = db.execute("""
+            SELECT m.creado_en AS fecha, m.tipo, m.cambio_disponible AS disponible,
+                   m.cambio_en_juego AS en_juego, a.estado, a.partido_id
+            FROM movimiento m LEFT JOIN apuesta a ON a.id = m.apuesta_id
+            WHERE m.usuario_id = ? ORDER BY m.id
+        """, (usuario_id,))
+        for fila in filas:
+            partido = CATALOGO_DEMO.get(fila["partido_id"])
+            movimientos.append(dict(fila) | {"deporte": partido[0] if partido else "Sin clasificar"})
+        return resultados_personales(movimientos)

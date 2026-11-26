@@ -50,6 +50,12 @@ def test_apuestas_en_ambos_fragmentos():
                                headers=headers, json={"resultado": "ganada"})
         assert resuelta.status_code == 200, resuelta.text
         assert resuelta.json()["bankroll"] == {"disponible": "1100.00", "en_juego": "0.00"}
+        resultados = cliente.get(ruta + "/resultados", headers=headers).json()
+        assert resultados["bankroll"] == resuelta.json()["bankroll"]
+        assert resultados["evolucion"][-1]["total"] == "1100.00"
+        assert resultados["ganancia_neta"] == "100.00"
+        assert resultados["roi_por_deporte"][0]["roi_porcentaje"] == "100.00"
+        assert resultados["rachas"]["maxima_ganadora"] == 1
         assert cliente.post("/auth/logout", headers=headers).status_code == 204
         assert cliente.get(ruta + "/historial", headers=headers).status_code == 401
     assert paridades == {0, 1}
