@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, StringConstraints
 
 from .bankroll import Bankroll, SaldoInsuficienteError
 from .datos_demo import ruta_demo
+from .resultados import resultados_personales
 
 router = APIRouter(prefix="/usuarios/{usuario_id}", tags=["Apuestas"])
 Identificador = Annotated[int, PathParam(gt=0, le=2**63 - 1)]
@@ -20,7 +21,11 @@ Resultado = Literal["ganada", "perdida", "anulada"]
 CENTAVO = Decimal("0.01")
 
 
+Origen = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)]
+
+
 class NuevaApuesta(BaseModel):
+    origen: Origen | None = None
     # Opcional para mantener el contrato de los clientes anteriores.
     exceso_aceptado: Decimal | None = Field(default=None, ge=0, decimal_places=2)
     partido_id: int = Field(gt=0, le=2**63 - 1)
@@ -67,7 +72,7 @@ def saldos(saldo):
 
 
 def respuesta(db, usuario_id, apuesta_id):
-    fila = db.execute("SELECT id, partido_id, seleccion, monto, cuota, estado FROM apuesta "
+    fila = db.execute("SELECT id, partido_id, seleccion, monto, cuota, estado, origen FROM apuesta "
                       "WHERE usuario_id = ? AND id = ?", (usuario_id, apuesta_id)).fetchone()
     apuesta = dict(fila)
     apuesta["monto"] = format(Decimal(fila["monto"]) * CENTAVO, ".2f")
@@ -93,18 +98,27 @@ def presupuesto(db, usuario_id):
     return {"limite_centavos": limite[0] if limite else None, "usado_centavos": usado}
 
 
+def filtrar_apuestas(apuestas, partidos, origen, deporte):
+    if origen is not None:
+        apuestas = [a for a in apuestas if a["origen"] == origen]
+    if deporte is not None:
+        ids = {p["id"] for p in partidos if p["deporte"].casefold() == deporte.strip().casefold()}
+        apuestas = [a for a in apuestas if a["partido_id"] in ids]
+    return apuestas
+
+
 @router.get("/historial")
-def historial(usuario_id: Identificador, ruta: Ruta):
+def historial(usuario_id: Identificador, ruta: Ruta, origen: Origen | None = None, deporte: str | None = None):
     with transaccion(ruta) as db:
         saldo = saldos(obtener_saldo(db, usuario_id))
-        filas = db.execute("SELECT id, partido_id, seleccion, monto, cuota, estado FROM apuesta "
+        filas = db.execute("SELECT id, partido_id, seleccion, monto, cuota, estado, origen FROM apuesta "
                            "WHERE usuario_id = ? ORDER BY id DESC", (usuario_id,))
         apuestas = [dict(row) | {"monto": format(Decimal(row["monto"]) * CENTAVO, ".2f")}
                     for row in filas]
         partidos = [{"id": i, "deporte": deporte, "local": local, "visitante": visitante}
                     for i, (deporte, local, visitante) in CATALOGO_DEMO.items()]
         return {"bankroll": saldo, "presupuesto": presupuesto(db, usuario_id),
-                "apuestas": apuestas, "partidos": partidos}
+                "apuestas": filtrar_apuestas(apuestas, partidos, origen, deporte), "partidos": partidos}
 
 
 @router.get("/bankroll")
@@ -122,7 +136,7 @@ def registrar(usuario_id: Identificador, datos: NuevaApuesta, clave: Clave, ruta
                             (usuario_id, clave)).fetchone()
         if previa:
             original = (previa["partido_id"], previa["seleccion"], previa["monto"], previa["cuota"])
-            if original != (datos.partido_id, datos.seleccion, monto, cuota):
+            if original != (datos.partido_id, datos.seleccion, monto, cuota) or previa["origen"] != datos.origen:
                 raise HTTPException(409, "clave_reutilizada")
             response.status_code = 200
             return respuesta(db, usuario_id, previa["id"])
@@ -142,9 +156,9 @@ def registrar(usuario_id: Identificador, datos: NuevaApuesta, clave: Clave, ruta
                 if exceso > int(datos.exceso_aceptado * 100):
                     raise HTTPException(409, {"exceso_centavos": exceso})
         apuesta_id = db.execute("""
-            INSERT INTO apuesta (usuario_id, clave, partido_id, seleccion, monto, cuota, estado, creada)
-            VALUES (?, ?, ?, ?, ?, ?, 'pendiente', CURRENT_TIMESTAMP)
-        """, (usuario_id, clave, datos.partido_id, datos.seleccion, monto, cuota)).lastrowid
+            INSERT INTO apuesta (usuario_id, clave, partido_id, seleccion, monto, cuota, origen, estado, creada)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'pendiente', CURRENT_TIMESTAMP)
+        """, (usuario_id, clave, datos.partido_id, datos.seleccion, monto, cuota, datos.origen)).lastrowid
         db.execute("""INSERT INTO movimiento (usuario_id, apuesta_id, tipo, cambio_disponible, cambio_en_juego)
                       VALUES (?, ?, 'reserva', ?, ?)""", (usuario_id, apuesta_id, -monto, monto))
         return respuesta(db, usuario_id, apuesta_id)
@@ -172,3 +186,22 @@ def resolver(usuario_id: Identificador, apuesta_id: Identificador, datos: Resolu
         db.execute("""INSERT INTO movimiento (usuario_id, apuesta_id, tipo, cambio_disponible, cambio_en_juego)
                       VALUES (?, ?, 'liquidacion', ?, ?)""", (usuario_id, apuesta_id, retorno, -monto))
         return respuesta(db, usuario_id, apuesta_id)
+
+
+@router.get("/resultados")
+def mis_resultados(usuario_id: Identificador, ruta: Ruta):
+    with transaccion(ruta) as db:
+        inicial = db.execute("SELECT inicial FROM bankroll WHERE usuario_id = ?", (usuario_id,)).fetchone()
+        if inicial is None:
+            raise HTTPException(404, "Usuario sin bankroll.")
+        movimientos = [{"fecha": None, "tipo": "saldo_inicial", "disponible": inicial[0], "en_juego": 0}]
+        filas = db.execute("""
+            SELECT m.creado_en AS fecha, m.tipo, m.cambio_disponible AS disponible,
+                   m.cambio_en_juego AS en_juego, a.estado, a.partido_id
+            FROM movimiento m LEFT JOIN apuesta a ON a.id = m.apuesta_id
+            WHERE m.usuario_id = ? ORDER BY m.id
+        """, (usuario_id,))
+        for fila in filas:
+            partido = CATALOGO_DEMO.get(fila["partido_id"])
+            movimientos.append(dict(fila) | {"deporte": partido[0] if partido else "Sin clasificar"})
+        return resultados_personales(movimientos)

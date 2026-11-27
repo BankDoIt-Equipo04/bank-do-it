@@ -84,6 +84,8 @@ def preparar(ruta: Path) -> None:
         # La demo anterior no guardaba fechas: se conserva su historial sin
         # atribuir operaciones antiguas a la semana actual.
         columnas = {c[1] for c in db.execute("PRAGMA table_info(apuesta)")}
+        if "origen" not in columnas:
+            db.execute("ALTER TABLE apuesta ADD COLUMN origen TEXT")
         if "creada" not in columnas:
             db.execute("ALTER TABLE apuesta ADD COLUMN creada TEXT")
         db.execute("""CREATE TABLE IF NOT EXISTS presupuesto (

@@ -9,8 +9,16 @@ from typing import Annotated
 import psycopg
 from fastapi import APIRouter, Depends, HTTPException, Response
 from psycopg.rows import dict_row
+from pydantic import AwareDatetime, BaseModel, Field
 
-from .apuestas import Clave, Identificador, NuevaApuesta, Resolucion
+from .apuestas import (
+    Clave,
+    Identificador,
+    NuevaApuesta,
+    Origen,
+    Resolucion,
+    filtrar_apuestas,
+)
 from .cuentas import (
     DURACION_SEGUNDOS,
     ESQUEMA_HTTP,
@@ -20,9 +28,13 @@ from .cuentas import (
     derivar,
     huella,
 )
+from .resultados import resultados_personales
 
 cuentas_pg = APIRouter(prefix="/auth", tags=["Cuentas"])
+admin_pg = APIRouter(prefix="/admin", tags=["Administración"])
 ERRORES = {
+    "partido_duplicado": 409, "equipos_invalidos": 422,
+    "administrador_requerido": 403, "sesion_invalida": 401,
     "alias_duplicado": 409, "cuenta_no_activa": 403, "usuario_inexistente": 404,
     "apuesta_inexistente": 404, "partido_inexistente": 404, "partido_no_disponible": 409,
     "saldo_insuficiente": 409, "clave_reutilizada": 409, "resultado_en_conflicto": 409,
@@ -105,6 +117,28 @@ def sesion(credencial: Portador):
 SesionPG = Annotated[tuple, Depends(sesion)]
 
 
+@admin_pg.get("/cuentas")
+def listar_cuentas(actual: SesionPG):
+    with conexion() as db:
+        return db.execute("SELECT alias, estado FROM listar_cuentas_admin(%s)", (actual[1],)).fetchall()
+
+
+class NuevoPartido(BaseModel):
+    deporte_id: int = Field(gt=0, le=32767)
+    equipo_local_id: int = Field(gt=0, le=2**63 - 1)
+    equipo_visitante_id: int = Field(gt=0, le=2**63 - 1)
+    fecha_hora: AwareDatetime
+
+
+@admin_pg.post("/partidos", status_code=201)
+def crear_partido(datos: NuevoPartido, actual: SesionPG):
+    with conexion() as db:
+        return db.execute(
+            "SELECT crear_partido_admin(%s,%s::smallint,%s,%s,%s) AS partido_id",
+            (actual[1], datos.deporte_id, datos.equipo_local_id, datos.equipo_visitante_id, datos.fecha_hora),
+        ).fetchone()
+
+
 @cuentas_pg.post("/logout", status_code=204)
 def cerrar(actual: SesionPG):
     with conexion() as db:
@@ -126,9 +160,11 @@ def historial_db(db, uid):
 
 
 @apuestas_pg.get("/historial")
-def historial(usuario_id: Identificador):
+def historial(usuario_id: Identificador, origen: Origen | None = None, deporte: str | None = None):
     with conexion(usuario_id) as db:
-        return historial_db(db, usuario_id)
+        actual = historial_db(db, usuario_id)
+        actual["apuestas"] = filtrar_apuestas(actual["apuestas"], actual["partidos"], origen, deporte)
+        return actual
 
 
 @apuestas_pg.get("/bankroll")
@@ -147,11 +183,14 @@ def respuesta(historial, apuesta_id):
 @apuestas_pg.post("/apuestas", status_code=201)
 def apostar(usuario_id: Identificador, datos: NuevaApuesta, clave: Clave, response: Response):
     with conexion(usuario_id) as db:
-        fila = db.execute("SELECT * FROM registrar_apuesta(%s,%s,%s,%s,%s,%s)",
+        fila = db.execute("SELECT * FROM registrar_apuesta(%s,%s,%s,%s,%s,%s,%s)",
                           (usuario_id, clave, datos.partido_id, datos.seleccion,
-                           datos.monto, datos.cuota)).fetchone()
+                           datos.monto, datos.cuota, datos.origen)).fetchone()
         actual = historial_db(db, usuario_id)
+        resultado = respuesta(actual, fila["apuesta_id"])
         if fila["es_reenvio"]:
+            if resultado["apuesta"]["origen"] != datos.origen:
+                raise HTTPException(409, "clave_reutilizada")
             response.status_code = 200
         elif datos.exceso_aceptado is not None:
             presupuesto = actual["presupuesto"]
@@ -160,7 +199,7 @@ def apostar(usuario_id: Identificador, datos: NuevaApuesta, clave: Clave, respon
                 exceso = presupuesto["usado_centavos"] - limite
                 if exceso > datos.exceso_aceptado * 100:
                     raise HTTPException(409, {"exceso_centavos": exceso})
-        return respuesta(actual, fila["apuesta_id"])
+        return resultado
 
 
 @apuestas_pg.put("/apuestas/{apuesta_id}/resultado")
@@ -168,3 +207,10 @@ def resolver(usuario_id: Identificador, apuesta_id: Identificador, datos: Resolu
     with conexion(usuario_id) as db:
         db.execute("SELECT * FROM resolver_apuesta(%s,%s,%s)", (usuario_id, apuesta_id, datos.resultado))
         return respuesta(historial_db(db, usuario_id), apuesta_id)
+
+
+@apuestas_pg.get("/resultados")
+def mis_resultados(usuario_id: Identificador):
+    with conexion(usuario_id) as db:
+        filas = db.execute("SELECT * FROM movimientos_resultados(%s) ORDER BY movimiento_id", (usuario_id,))
+        return resultados_personales(filas)
