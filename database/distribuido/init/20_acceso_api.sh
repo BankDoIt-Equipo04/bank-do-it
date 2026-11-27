@@ -32,6 +32,8 @@ if [ "$en_recuperacion" = "f" ]; then
     fi
     # Procedimiento de mantenimiento (#56) en cada primario.
     psql_admin -f /scripts/22_mantenimiento.sql
+    # Funciones de monitoreo y rol del exportador (#59).
+    psql_admin -v clave_monitor="${BANKDOIT_MONITOR_PASSWORD:-}" -f /scripts/23_monitoreo.sql
 else
     echo "Réplica: el rol bankdoit_api llega desde su primario."
 fi
@@ -53,6 +55,7 @@ cp "$PGDATA/pg_hba.conf" "$PGDATA/pg_hba.conf.anterior"
         echo "host     replication  replicador       $cidr   scram-sha-256  # réplica física"
         echo "host     $BASE     replicador       $cidr   scram-sha-256  # suscripción del catálogo"
         echo "host     all          $USUARIO         $cidr   scram-sha-256  # administración remota"
+        echo "hostssl  $BASE     bankdoit_monitor $cidr   scram-sha-256  # exportador de Prometheus (#59)"
     done
 } > "$PGDATA/pg_hba.conf"
 

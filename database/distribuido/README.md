@@ -1,6 +1,6 @@
 # Fragmentos de PostgreSQL y sus réplicas
 
-Issues #17 (fragmentos y réplicas), #18 (pruebas de falla), #32 (acceso de la API), #56 (mantenimiento), #57 (respaldos de PostgreSQL) y #58 (respaldos de MongoDB). Responsable: Osvaldo Yair Serna Salazar.
+Issues #17 (fragmentos y réplicas), #18 (pruebas de falla), #32 (acceso de la API), #56 (mantenimiento), #57 (respaldos de PostgreSQL), #58 (respaldos de MongoDB) y #59 (monitoreo). Responsable: Osvaldo Yair Serna Salazar.
 
 Aplica la distribución de [docs/distribucion-datos.md](../../docs/distribucion-datos.md) (#3) sobre el esquema de [database/sql](../sql) (#16): usuarios impares en el primario del Nodo A (PC de escritorio de Luis), pares en el primario del Nodo B (laptop de Luis), y cada fragmento con una réplica síncrona en el otro equipo.
 
@@ -260,6 +260,33 @@ cd analytics
 - **Prueba** (MongoDB de ensayo en el puerto 27018, no toca otro MongoDB): publica dos cortes con `procesar.py`, respalda, restaura en un MongoDB limpio y sin red con el mismo contenido y las mismas horas de corte, borra la colección del original y la recupera con `mongorestore --drop`, y comprueba que reprocesar el CSV conserva la hora de corte original.
 
 Resultado en [evidencia/evidencia_respaldo_mongo.md](evidencia/evidencia_respaldo_mongo.md). Los resúmenes se pueden regenerar desde sus datos de origen, así que este respaldo protege sobre todo las **horas de corte** que muestra la app.
+
+## Monitoreo (#59)
+
+`init/23_monitoreo.sql` (lo instala `20_acceso_api.sh`) agrega dos funciones a cada instancia:
+
+| Función | Qué devuelve |
+| --- | --- |
+| `estado_replicacion()` | En un primario: cada réplica con su estado, sincronía, bytes de WAL pendientes, retrasos y la ranura que la retiene |
+| `estado_nodo()` | En cualquier instancia: fragmento, rol, réplicas síncronas, escrituras esperando a la réplica (`SyncRep`), bloqueos, transacciones largas, conexiones, retraso de réplica, archivado de WAL, último mantenimiento (#56) y tamaño |
+
+**`monitorear.ps1`** revisa las cuatro instancias y alerta si una no responde, si un primario no tiene su réplica síncrona, si hay escrituras esperando a la réplica, si una réplica va atrasada, si el archivado de WAL falla, si el último mantenimiento encontró descuadres o si las conexiones pasan del 80 %.
+
+```powershell
+.\monitorear.ps1              # una revisión (sale con código 1 si hay alertas)
+.\monitorear.ps1 -Continuo    # cada 5 s, hasta Ctrl+C
+.\probar_monitoreo.ps1        # antes, durante y después de una partición de red
+```
+
+**Tablero opcional (Prometheus + Grafana):** un `postgres_exporter` por instancia se conecta por TLS (`verify-full`) con el rol de solo lectura `bankdoit_monitor` (miembro de `pg_monitor`, sin acceso a tablas) y publica también las métricas de `estado_nodo()` y `estado_replicacion()` (`monitoreo/queries.yaml`).
+
+```powershell
+docker compose --profile nodo-a --profile nodo-b --profile monitoreo up -d
+```
+
+Grafana queda en http://127.0.0.1:3000 (usuario `admin`, contraseña `GRAFANA_ADMIN_PASSWORD` de `.env`) con el tablero **BANKDOIT · PostgreSQL distribuido**: instancias arriba, réplica síncrona por primario, escrituras esperando a la réplica, WAL pendiente, conexiones, descuadres y archivado. Prometheus queda en http://127.0.0.1:9090.
+
+En la prueba, durante la partición `monitorear.ps1` alertó que ambos primarios perdieron su réplica síncrona y que había una escritura esperando; Prometheus mostró esa escritura y marcó como inalcanzables las instancias del Nodo B; al reconectar, todo volvió a cero alertas. Resultado en [evidencia/evidencia_monitoreo.md](evidencia/evidencia_monitoreo.md).
 
 ## Consideraciones y pendientes
 
