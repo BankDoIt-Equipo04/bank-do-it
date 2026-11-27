@@ -189,7 +189,7 @@ def resolver(usuario_id: Identificador, apuesta_id: Identificador, datos: Resolu
 
 
 @router.get("/resultados")
-def mis_resultados(usuario_id: Identificador, ruta: Ruta):
+def mis_resultados(usuario_id: Identificador, ruta: Ruta, graficas: bool = False):
     with transaccion(ruta) as db:
         inicial = db.execute("SELECT inicial FROM bankroll WHERE usuario_id = ?", (usuario_id,)).fetchone()
         if inicial is None:
@@ -204,4 +204,4 @@ def mis_resultados(usuario_id: Identificador, ruta: Ruta):
         for fila in filas:
             partido = CATALOGO_DEMO.get(fila["partido_id"])
             movimientos.append(dict(fila) | {"deporte": partido[0] if partido else "Sin clasificar"})
-        return resultados_personales(movimientos)
+    return resultados_personales(movimientos, graficas)

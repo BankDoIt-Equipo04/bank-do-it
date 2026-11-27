@@ -30,3 +30,11 @@ Flutter consume `GET /admin/cuentas` (lista), `GET /admin/equipos` y `POST /admi
 Ejecuta `flutter test test/administracion_test.dart` para comprobar la captura consecutiva con un catálogo simulado.
 
 Para repetir la integración en Windows, usa una base PostgreSQL de prueba con el catálogo de ejemplo (Chiefs y Eagles), una cuenta administradora activa y sin esos encuentros registrados hoy a mediodía. Desde `mobile` ejecuta `flutter test -d windows integration_test/administracion_test.dart --dart-define=API_URL=http://127.0.0.1:8000 --dart-define=ADMIN_PRUEBA=ALIAS_DE_PRUEBA --dart-define=CLAVE_PRUEBA=CLAVE_DE_PRUEBA`. La prueba crea dos partidos en esa base.
+
+## Estadísticas (#43)
+
+En Estadísticas, «Mis resultados» muestra la evolución diaria del bankroll y la ganancia deportiva, el ROI por deporte y las rachas en orden de resolución. Cada gráfica muestra «Sin datos» si le falta información. La API genera las imágenes al solicitar `GET /usuarios/{id}/resultados?graficas=true`. Instala las dependencias actualizadas de `backend/requirements.txt` para incluir Matplotlib.
+
+«Globales» muestra los conteos por deporte y partido del último corte de MongoDB. La hora se presenta en la zona local del dispositivo. Si todavía no hay un corte, la pantalla indica «Sin datos». Si el servicio falla, ofrece reintentar.
+
+Para repetir la prueba de Windows, inicia MongoDB de pruebas con `docker compose -f analytics/compose.yaml up -d` desde la raíz. Instala las dependencias de `analytics/requirements.txt` y ejecuta `python analytics/procesar.py` para publicar un corte. Inicia la API temporal con `python -m tests.servidor_flutter` desde `backend`. Desde `mobile`, ejecuta `flutter test -d windows integration_test/estadisticas_test.dart --dart-define=API_URL=http://127.0.0.1:18810`. El recorrido crea una cuenta temporal, resuelve una apuesta ganada y consulta ambos reportes.
