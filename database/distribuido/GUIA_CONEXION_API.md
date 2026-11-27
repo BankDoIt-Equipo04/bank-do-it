@@ -172,7 +172,7 @@ La tabla completa (41 comprobaciones) y la ubicación de cada registro en las cu
 
 Todo lo anterior se probó con los cuatro contenedores en una sola PC. En el despliegue real falta:
 
-1. VPN entre la PC de Luis y el nodo remoto, y la IP de cada uno.
+1. Conectividad entre la PC de escritorio de Luis (Nodo A) y su laptop (Nodo B): la misma red local o, si están en lugares distintos, una VPN; y la IP de cada uno.
 2. Generar los certificados con el nombre de cada equipo, por ejemplo `$env:NODO_B_SAN_EXTRA='DNS:nodo-b.bankdoit,IP:100.64.0.12'`, y conectarse con `host=nodo-b.bankdoit hostaddr=100.64.0.12`.
 3. Ajustar en `.env` `API_ORIGEN_CIDR` y `RED_CIDR` a la subred real por la que llegan la API y la replicación, y volver a correr `configurar_acceso_api.ps1`.
 4. Repetir la verificación y medir la latencia de la replicación síncrona entre casas.

@@ -1,8 +1,8 @@
 # Fragmentos de PostgreSQL y sus réplicas
 
-Issues #17 (fragmentos y réplicas), #18 (pruebas de falla), #32 (acceso de la API), #56 (mantenimiento) y #57 (respaldos). Responsable: Osvaldo Yair Serna Salazar.
+Issues #17 (fragmentos y réplicas), #18 (pruebas de falla), #32 (acceso de la API), #56 (mantenimiento), #57 (respaldos de PostgreSQL) y #58 (respaldos de MongoDB). Responsable: Osvaldo Yair Serna Salazar.
 
-Aplica la distribución de [docs/distribucion-datos.md](../../docs/distribucion-datos.md) (#3) sobre el esquema de [database/sql](../sql) (#16): usuarios impares en el primario del Nodo A (PC de Luis), pares en el primario del Nodo B (remoto), y cada fragmento con una réplica síncrona en el otro equipo.
+Aplica la distribución de [docs/distribucion-datos.md](../../docs/distribucion-datos.md) (#3) sobre el esquema de [database/sql](../sql) (#16): usuarios impares en el primario del Nodo A (PC de escritorio de Luis), pares en el primario del Nodo B (laptop de Luis), y cada fragmento con una réplica síncrona en el otro equipo.
 
 ## Arquitectura
 
@@ -10,12 +10,12 @@ Aplica la distribución de [docs/distribucion-datos.md](../../docs/distribucion-
 flowchart LR
     API["API (FastAPI)<br/>usuario_id % 2"]
 
-    subgraph A["Nodo A — PC de Luis"]
+    subgraph A["Nodo A — PC de escritorio de Luis"]
         AP[("nodo-a-primario-impar<br/>:5441 · escribe impares<br/>dueño del catálogo")]
         AR[("nodo-a-replica-par<br/>:5442 · solo lectura")]
     end
 
-    subgraph B["Nodo B — equipo remoto"]
+    subgraph B["Nodo B — laptop de Luis"]
         BP[("nodo-b-primario-par<br/>:5451 · escribe pares")]
         BR[("nodo-b-replica-impar<br/>:5452 · solo lectura")]
     end
@@ -94,17 +94,17 @@ docker compose --profile nodo-a --profile nodo-b down -v     # los borra
 El mismo `docker-compose.yml` sirve para los dos equipos con perfiles; solo cambia `.env`.
 
 1. **VPN entre los dos equipos** (por ejemplo Tailscale o ZeroTier, gratis). Cada equipo obtiene una IP privada de la VPN. No se abren puertos a internet.
-2. **PC de Luis (Nodo A).** En `.env`:
+2. **PC de escritorio de Luis (Nodo A).** En `.env`:
    ```
-   BIND_IP=<IP VPN de la PC de Luis>
-   PAR_PRIMARIO_HOST=<IP VPN del nodo remoto>
+   BIND_IP=<IP de la PC de escritorio de Luis>
+   PAR_PRIMARIO_HOST=<IP de la laptop de Luis>
    PAR_PRIMARIO_PUERTO=5451
    ```
    y `docker compose --profile nodo-a up -d nodo-a-primario-impar`.
-3. **Nodo remoto (Nodo B).** En `.env`:
+3. **Laptop de Luis (Nodo B).** En `.env`:
    ```
-   BIND_IP=<IP VPN del nodo remoto>
-   IMPAR_PRIMARIO_HOST=<IP VPN de la PC de Luis>
+   BIND_IP=<IP de la laptop de Luis>
+   IMPAR_PRIMARIO_HOST=<IP de la PC de escritorio de Luis>
    IMPAR_PRIMARIO_PUERTO=5441
    ```
    y `docker compose --profile nodo-b up -d nodo-b-primario-par`.
@@ -243,6 +243,23 @@ Cada primario archiva su WAL de forma continua (`archive_mode = on`, `archive_co
 Resultado en [evidencia/evidencia_respaldos.md](evidencia/evidencia_respaldos.md).
 
 **Restaurar en producción:** detener la API, restaurar el respaldo físico en el primario afectado siguiendo el mismo procedimiento de la prueba (`restore_command` y `recovery_target_name` o `recovery_target_time`), reconstruir su réplica con `pg_basebackup` y conciliar. **Copiar `respaldos\` fuera del equipo** (otro disco, otra casa o almacenamiento en la nube, cifrado): un respaldo en el mismo disco no protege si se pierde el equipo. Para programarlo a diario se puede usar el Programador de tareas de Windows con `powershell -File <ruta>\respaldar.ps1`.
+
+## Respaldo de MongoDB de análisis (#58)
+
+La base `bankdoit_analytics` (colección `resumenes`, un documento por archivo procesado con su `corte_utc`) se respalda con `mongodump` desde `analytics\`:
+
+```powershell
+cd analytics
+.\respaldar_mongo.ps1           # respaldos\mongo_<fecha>.archive.gz + manifiesto .json
+.\probar_respaldo_mongo.ps1     # ensayo aislado: respaldo, restauración y retención
+```
+
+- **Manifiesto:** sha256 del archivo, documentos por colección y la hora de corte de cada resumen.
+- **Retención:** la misma que PostgreSQL (7 diarios y 4 semanales).
+- **Puerto configurable:** `analytics/compose.yaml` usa `MONGO_PUERTO` (27017 por omisión) para convivir con otro MongoDB local; si cambias el puerto, ajusta `MONGODB_URI` de `procesar.py` y de la API.
+- **Prueba** (MongoDB de ensayo en el puerto 27018, no toca otro MongoDB): publica dos cortes con `procesar.py`, respalda, restaura en un MongoDB limpio y sin red con el mismo contenido y las mismas horas de corte, borra la colección del original y la recupera con `mongorestore --drop`, y comprueba que reprocesar el CSV conserva la hora de corte original.
+
+Resultado en [evidencia/evidencia_respaldo_mongo.md](evidencia/evidencia_respaldo_mongo.md). Los resúmenes se pueden regenerar desde sus datos de origen, así que este respaldo protege sobre todo las **horas de corte** que muestra la app.
 
 ## Consideraciones y pendientes
 

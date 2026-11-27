@@ -1,13 +1,13 @@
 # BANKDOIT · Fragmentos de PostgreSQL y sus réplicas (#17)
 #
-#   Nodo A (PC de Luis)  : primario F-impar + réplica F-par
-#   Nodo B (remoto)      : primario F-par   + réplica F-impar
+#   Nodo A (PC de escritorio de Luis): primario F-impar + réplica F-par
+#   Nodo B (laptop de Luis)          : primario F-par   + réplica F-impar
 #
 # Simulación en una sola computadora (los cuatro servicios):
 #   docker compose --profile nodo-a --profile nodo-b up -d
 # Despliegue real en dos equipos (ver README.md):
-#   PC de Luis : docker compose --profile nodo-a up -d
-#   Nodo remoto: docker compose --profile nodo-b up -d
+#   PC de escritorio de Luis : docker compose --profile nodo-a up -d
+#   Laptop de Luis           : docker compose --profile nodo-b up -d
 # Las direcciones del otro nodo se configuran en .env (*_HOST / *_PUERTO).
 
 name: bankdoit-distribuido

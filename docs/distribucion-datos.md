@@ -9,7 +9,7 @@ Este documento identifica las entidades principales de BANKDOIT, define cómo se
 | Nodo | Equipo | Aloja |
 | --- | --- | --- |
 | **Nodo A** | PC de escritorio de Luis (local) | Primario del fragmento impar y réplica del fragmento par |
-| **Nodo B** | Equipo remoto (por confirmar) | Primario del fragmento par y réplica del fragmento impar |
+| **Nodo B** | Laptop de Luis | Primario del fragmento par y réplica del fragmento impar |
 
 Cada nodo ejecuta dos instancias de PostgreSQL en contenedores: una primaria (acepta escrituras) y una réplica de solo lectura del fragmento del otro nodo. Los nodos se comunican por VPN o túnel cifrado.
 
@@ -59,7 +59,7 @@ flowchart LR
         A2[("PostgreSQL réplica<br/>F-par")]
     end
 
-    subgraph B["Nodo B — equipo remoto"]
+    subgraph B["Nodo B — laptop de Luis"]
         B1[("PostgreSQL primario<br/>F-par")]
         B2[("PostgreSQL réplica<br/>F-impar")]
     end
