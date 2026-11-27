@@ -1,0 +1,15 @@
+# BANKDOIT · Prometheus (#59): un exportador por instancia de PostgreSQL.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+scrape_configs:
+  - job_name: postgres
+    static_configs:
+      - targets: ["exporter-a-primario-impar:9187"]
+        labels: {instancia: "nodo-a-primario-impar", nodo: "A"}
+      - targets: ["exporter-b-replica-impar:9187"]
+        labels: {instancia: "nodo-b-replica-impar", nodo: "B"}
+      - targets: ["exporter-b-primario-par:9187"]
+        labels: {instancia: "nodo-b-primario-par", nodo: "B"}
+      - targets: ["exporter-a-replica-par:9187"]
+        labels: {instancia: "nodo-a-replica-par", nodo: "A"}

@@ -1,0 +1,38 @@
+# BANKDOIT · consultas propias del exportador de Prometheus (#59).
+# Usan las funciones de init/23_monitoreo.sql con el rol bankdoit_monitor.
+bankdoit_nodo:
+  query: >-
+    SELECT fragmento, rol, replicas_esperadas, replicas_sync, esperando_replica,
+           esperando_bloqueo, transacciones_largas, conexiones,
+           COALESCE(retraso_replica_segundos, 0) AS retraso_replica_segundos,
+           COALESCE(wal_recibido_sin_aplicar_bytes, 0) AS wal_recibido_sin_aplicar_bytes,
+           fallos_archivo, CASE WHEN archivo_al_dia THEN 1 ELSE 0 END AS archivo_al_dia,
+           COALESCE(descuadres_ultimo_mantenimiento, 0) AS descuadres_ultimo_mantenimiento
+      FROM estado_nodo()
+  metrics:
+    - fragmento: {usage: "LABEL", description: "Fragmento (impar o par)"}
+    - rol: {usage: "LABEL", description: "primario o réplica"}
+    - replicas_esperadas: {usage: "GAUGE", description: "Réplicas síncronas que exige el primario"}
+    - replicas_sync: {usage: "GAUGE", description: "Réplicas conectadas en modo síncrono"}
+    - esperando_replica: {usage: "GAUGE", description: "Escrituras esperando confirmación de la réplica (SyncRep)"}
+    - esperando_bloqueo: {usage: "GAUGE", description: "Sesiones esperando un bloqueo"}
+    - transacciones_largas: {usage: "GAUGE", description: "Transacciones abiertas hace más de 1 minuto"}
+    - conexiones: {usage: "GAUGE", description: "Conexiones de clientes"}
+    - retraso_replica_segundos: {usage: "GAUGE", description: "Segundos sin aplicar lo recibido (réplicas)"}
+    - wal_recibido_sin_aplicar_bytes: {usage: "GAUGE", description: "WAL recibido pendiente de aplicar (réplicas)"}
+    - fallos_archivo: {usage: "COUNTER", description: "Fallos del archivado de WAL"}
+    - archivo_al_dia: {usage: "GAUGE", description: "1 si el archivado de WAL está al día"}
+    - descuadres_ultimo_mantenimiento: {usage: "GAUGE", description: "Bankrolls descuadrados en el último mantenimiento"}
+
+bankdoit_replica:
+  query: >-
+    SELECT replica, sincronia, CASE WHEN sincronia = 'sync' THEN 1 ELSE 0 END AS es_sync,
+           COALESCE(bytes_pendientes, 0) AS bytes_pendientes,
+           COALESCE(extract(epoch FROM retraso_aplicacion), 0) AS retraso_aplicacion_segundos
+      FROM estado_replicacion()
+  metrics:
+    - replica: {usage: "LABEL", description: "Nombre de la réplica"}
+    - sincronia: {usage: "LABEL", description: "sync, async o potential"}
+    - es_sync: {usage: "GAUGE", description: "1 si la réplica es síncrona"}
+    - bytes_pendientes: {usage: "GAUGE", description: "Bytes de WAL que la réplica aún no aplica"}
+    - retraso_aplicacion_segundos: {usage: "GAUGE", description: "Retraso de aplicación reportado por la réplica"}

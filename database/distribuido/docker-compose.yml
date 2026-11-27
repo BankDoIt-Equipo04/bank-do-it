@@ -21,6 +21,7 @@ x-postgres: &postgres
     REPLICADOR_PASSWORD: ${REPLICADOR_PASSWORD:?Define REPLICADOR_PASSWORD en .env}
     # Acceso de la API (#32): se aplica con configurar_acceso_api.ps1.
     BANKDOIT_API_PASSWORD: ${BANKDOIT_API_PASSWORD:-}
+    BANKDOIT_MONITOR_PASSWORD: ${BANKDOIT_MONITOR_PASSWORD:-}
     API_ORIGEN_CIDR: ${API_ORIGEN_CIDR:-172.28.0.0/16}
     RED_CIDR: ${RED_CIDR:-172.28.0.0/16}
     TZ: America/Mexico_City
@@ -163,6 +164,63 @@ services:
       - ./certs:/certs-origen:ro
       - ./respaldos:/respaldos
       - ./pruebas:/pruebas:ro
+
+  # ---------------------------------------------- Monitoreo (#59, opcional)
+  # docker compose --profile nodo-a --profile nodo-b --profile monitoreo up -d
+  # Grafana: http://127.0.0.1:3000 (usuario admin, contraseña GRAFANA_ADMIN_PASSWORD)
+  exporter-a-primario-impar: &exporter
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    profiles: ["monitoreo"]
+    command: ["--extend.query-path=/etc/bankdoit/queries.yaml"]
+    volumes:
+      - ./monitoreo/queries.yaml:/etc/bankdoit/queries.yaml:ro
+      - ./certs/ca.crt:/certs/ca.crt:ro
+    container_name: ${BANKDOIT_PREFIJO:-}exporter-a-primario-impar
+    environment:
+      DATA_SOURCE_URI: "nodo-a-primario-impar:5432/${POSTGRES_DB:-bankdoit}?sslmode=verify-full&sslrootcert=/certs/ca.crt"
+      DATA_SOURCE_USER: bankdoit_monitor
+      DATA_SOURCE_PASS: ${BANKDOIT_MONITOR_PASSWORD:-}
+  exporter-b-replica-impar:
+    <<: *exporter
+    container_name: ${BANKDOIT_PREFIJO:-}exporter-b-replica-impar
+    environment:
+      DATA_SOURCE_URI: "nodo-b-replica-impar:5432/${POSTGRES_DB:-bankdoit}?sslmode=verify-full&sslrootcert=/certs/ca.crt"
+      DATA_SOURCE_USER: bankdoit_monitor
+      DATA_SOURCE_PASS: ${BANKDOIT_MONITOR_PASSWORD:-}
+  exporter-b-primario-par:
+    <<: *exporter
+    container_name: ${BANKDOIT_PREFIJO:-}exporter-b-primario-par
+    environment:
+      DATA_SOURCE_URI: "nodo-b-primario-par:5432/${POSTGRES_DB:-bankdoit}?sslmode=verify-full&sslrootcert=/certs/ca.crt"
+      DATA_SOURCE_USER: bankdoit_monitor
+      DATA_SOURCE_PASS: ${BANKDOIT_MONITOR_PASSWORD:-}
+  exporter-a-replica-par:
+    <<: *exporter
+    container_name: ${BANKDOIT_PREFIJO:-}exporter-a-replica-par
+    environment:
+      DATA_SOURCE_URI: "nodo-a-replica-par:5432/${POSTGRES_DB:-bankdoit}?sslmode=verify-full&sslrootcert=/certs/ca.crt"
+      DATA_SOURCE_USER: bankdoit_monitor
+      DATA_SOURCE_PASS: ${BANKDOIT_MONITOR_PASSWORD:-}
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    profiles: ["monitoreo"]
+    container_name: ${BANKDOIT_PREFIJO:-}prometheus
+    ports: ["127.0.0.1:${PUERTO_PROMETHEUS:-9090}:9090"]
+    volumes:
+      - ./monitoreo/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    profiles: ["monitoreo"]
+    container_name: ${BANKDOIT_PREFIJO:-}grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-cambia_esta}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports: ["127.0.0.1:${PUERTO_GRAFANA:-3000}:3000"]
+    volumes:
+      - ./monitoreo/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoreo/grafana/dashboards:/var/lib/grafana/dashboards:ro
 
 networks:
   default:
