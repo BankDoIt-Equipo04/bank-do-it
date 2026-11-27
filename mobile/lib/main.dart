@@ -4,6 +4,7 @@ import 'borradores.dart';
 import 'bankroll.dart';
 import 'acceso.dart';
 import 'administracion.dart';
+import 'estadisticas.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -224,21 +225,10 @@ class _PrincipalState extends State<Principal> {
               visible: actual == Seccion.bankroll,
               actualizarSaldo: actualizar,
             ),
-            Padding(
-              padding: EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Estadísticas', style: titulo),
-                  const SizedBox(height: 20),
-                  Text(
-                    historial.apuestas.every((a) => a['estado'] == 'pendiente')
-                        ? 'Aún no hay apuestas resueltas.'
-                        : 'Apuestas resueltas: ${historial.apuestas.where((a) => a["estado"] != "pendiente").length}.',
-                  ),
-                ],
-              ),
-            ),
+            if (actual == Seccion.estadisticas)
+              Estadisticas(api: api, partidos: historial.partidos)
+            else
+              const SizedBox.shrink(),
           ],
         );
       },

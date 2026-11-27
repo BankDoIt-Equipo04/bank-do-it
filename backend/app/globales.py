@@ -20,7 +20,9 @@ def resultados_globales():
                 {}, campos, sort=[("corte_utc", -1), ("_id", -1)])
     except PyMongoError as error:
         raise HTTPException(503, "MongoDB no está disponible.") from error
-    if not corte or "por_partido" not in corte:
+    if corte is None:
+        return {"corte_utc": None, "total_apuestas": 0, "por_deporte": [], "por_partido": []}
+    if "por_partido" not in corte:
         raise HTTPException(503, "Ejecuta analytics/procesar.py para preparar los conteos.")
     return {"corte_utc": corte["corte_utc"], "total_apuestas": corte["auditoria"]["validas"],
             "por_deporte": corte["por_deporte"], "por_partido": corte["por_partido"]}

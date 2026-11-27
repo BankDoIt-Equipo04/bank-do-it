@@ -259,6 +259,24 @@ class ApiApuestas {
     await _enviar('POST', 'admin/partidos', datos: partido, clave: clave);
   }
 
+  Future<Json> misResultados() async {
+    final datos = await _enviar(
+      'GET',
+      'usuarios/$usuario/resultados?graficas=true',
+    );
+    if (datos['graficas'] is! Json ||
+        datos['rachas'] is! Json ||
+        datos['roi_por_deporte'] is! List ||
+        datos['ganancia_neta'] is! String) {
+      throw FalloApi(
+        'La API no devolvió las gráficas personales. Comprueba su versión.',
+      );
+    }
+    return datos;
+  }
+
+  Future<Json> resultadosGlobales() => _enviar('GET', 'resultados/globales');
+
   Future<List<Json>> movimientos() async {
     final j = await _enviar('GET', 'usuarios/$usuario/bankroll/movimientos');
     final filas = j['movimientos'];

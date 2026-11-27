@@ -1,3 +1,4 @@
+import base64
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
@@ -258,3 +259,10 @@ def test_resultados_segun_orden_de_liquidacion(demo):
     assert r["roi_por_deporte"] == [{"deporte": "Fútbol", "monto_resuelto": "300.00",
                                      "ganancia_neta": "100.00", "roi_porcentaje": "33.33"}]
     assert r["rachas"] == {"actual": "perdida", "longitud": 1, "maxima_ganadora": 2, "maxima_perdedora": 1}
+
+    reporte = cliente.get(url, params={"graficas": True}).json()
+    assert reporte["corte_utc"] and set(reporte["graficas"]) == {"evolucion", "roi", "rachas"}
+    for imagen in reporte["graficas"].values():
+        with Image.open(BytesIO(base64.b64decode(imagen))) as grafica:
+            assert grafica.format == "PNG"
+            grafica.verify()

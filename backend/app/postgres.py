@@ -222,7 +222,7 @@ def resolver(usuario_id: Identificador, apuesta_id: Identificador, datos: Resolu
 
 
 @apuestas_pg.get("/resultados")
-def mis_resultados(usuario_id: Identificador):
+def mis_resultados(usuario_id: Identificador, graficas: bool = False):
     with conexion(usuario_id) as db:
-        filas = db.execute("SELECT * FROM movimientos_resultados(%s) ORDER BY movimiento_id", (usuario_id,))
-        return resultados_personales(filas)
+        filas = db.execute("SELECT * FROM movimientos_resultados(%s) ORDER BY movimiento_id", (usuario_id,)).fetchall()
+    return resultados_personales(filas, graficas)
