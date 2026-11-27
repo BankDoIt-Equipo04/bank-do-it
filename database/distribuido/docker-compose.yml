@@ -45,6 +45,8 @@ services:
     entrypoint: ["bash", "/scripts/tls.sh"]
     command: ["docker-entrypoint.sh", "postgres", "-c", "wal_level=logical", "-c", "max_wal_senders=10",
               "-c", "max_replication_slots=10", "-c", "cluster_name=primario_impar",
+              "-c", "archive_mode=on", "-c", "archive_timeout=60s",
+              "-c", "archive_command=mkdir -p /respaldos/wal/impar && test ! -f /respaldos/wal/impar/%f && cp %p /respaldos/wal/impar/%f",
               "-c", "wal_sender_timeout=10s", "-c", "wal_receiver_timeout=10s",
               "-c", "ssl=on", "-c", "ssl_cert_file=/var/lib/postgresql/tls/server.crt",
               "-c", "ssl_key_file=/var/lib/postgresql/tls/server.key",
@@ -57,6 +59,7 @@ services:
       - ./init/10_fragmento.sh:/docker-entrypoint-initdb.d/10_fragmento.sh:ro
       - ./init:/scripts:ro
       - ./certs:/certs-origen:ro
+      - ./respaldos:/respaldos
       - ./datos:/datos:ro
       - ./pruebas:/pruebas:ro
 
@@ -69,6 +72,7 @@ services:
     environment:
       <<: *entorno
       TLS_NODO: nodo-a
+      FRAGMENTO_RESPALDO: par
       REPLICA_NOMBRE: replica_par
       PRIMARIO_HOST: ${PAR_PRIMARIO_HOST:-nodo-b-primario-par}
       PRIMARIO_PUERTO: ${PAR_PRIMARIO_PUERTO:-5432}
@@ -77,6 +81,7 @@ services:
       - datos_a_replica_par:/var/lib/postgresql/data
       - ./init:/scripts:ro
       - ./certs:/certs-origen:ro
+      - ./respaldos:/respaldos
       - ./pruebas:/pruebas:ro
 
   # ------------------------------------------------------------- Nodo B
@@ -95,6 +100,8 @@ services:
     entrypoint: ["bash", "/scripts/tls.sh"]
     command: ["docker-entrypoint.sh", "postgres", "-c", "wal_level=logical", "-c", "max_wal_senders=10",
               "-c", "max_replication_slots=10", "-c", "cluster_name=primario_par",
+              "-c", "archive_mode=on", "-c", "archive_timeout=60s",
+              "-c", "archive_command=mkdir -p /respaldos/wal/par && test ! -f /respaldos/wal/par/%f && cp %p /respaldos/wal/par/%f",
               "-c", "wal_sender_timeout=10s", "-c", "wal_receiver_timeout=10s",
               "-c", "ssl=on", "-c", "ssl_cert_file=/var/lib/postgresql/tls/server.crt",
               "-c", "ssl_key_file=/var/lib/postgresql/tls/server.key",
@@ -107,6 +114,7 @@ services:
       - ./init/10_fragmento.sh:/docker-entrypoint-initdb.d/10_fragmento.sh:ro
       - ./init:/scripts:ro
       - ./certs:/certs-origen:ro
+      - ./respaldos:/respaldos
       - ./datos:/datos:ro
       - ./pruebas:/pruebas:ro
 
@@ -119,6 +127,7 @@ services:
     environment:
       <<: *entorno
       TLS_NODO: nodo-b
+      FRAGMENTO_RESPALDO: impar
       REPLICA_NOMBRE: replica_impar
       PRIMARIO_HOST: ${IMPAR_PRIMARIO_HOST:-nodo-a-primario-impar}
       PRIMARIO_PUERTO: ${IMPAR_PRIMARIO_PUERTO:-5432}
@@ -127,6 +136,7 @@ services:
       - datos_b_replica_impar:/var/lib/postgresql/data
       - ./init:/scripts:ro
       - ./certs:/certs-origen:ro
+      - ./respaldos:/respaldos
       - ./pruebas:/pruebas:ro
 
   # ---------------------------------------------- Recuperación (#18)
@@ -142,6 +152,7 @@ services:
     environment:
       <<: *entorno
       TLS_NODO: nodo-b
+      FRAGMENTO_RESPALDO: par
       REPLICA_NOMBRE: replica_par
       PRIMARIO_HOST: ${PAR_NUEVO_PRIMARIO_HOST:-nodo-a-replica-par}
       PRIMARIO_PUERTO: ${PAR_NUEVO_PRIMARIO_PUERTO:-5432}
@@ -150,6 +161,7 @@ services:
       - datos_b_replica_par:/var/lib/postgresql/data
       - ./init:/scripts:ro
       - ./certs:/certs-origen:ro
+      - ./respaldos:/respaldos
       - ./pruebas:/pruebas:ro
 
 networks:

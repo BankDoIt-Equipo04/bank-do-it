@@ -1,6 +1,6 @@
 # Fragmentos de PostgreSQL y sus réplicas
 
-Issues #17 (fragmentos y réplicas), #18 (pruebas de falla), #32 (acceso de la API) y #56 (mantenimiento). Responsable: Osvaldo Yair Serna Salazar.
+Issues #17 (fragmentos y réplicas), #18 (pruebas de falla), #32 (acceso de la API), #56 (mantenimiento) y #57 (respaldos). Responsable: Osvaldo Yair Serna Salazar.
 
 Aplica la distribución de [docs/distribucion-datos.md](../../docs/distribucion-datos.md) (#3) sobre el esquema de [database/sql](../sql) (#16): usuarios impares en el primario del Nodo A (PC de Luis), pares en el primario del Nodo B (remoto), y cada fragmento con una réplica síncrona en el otro equipo.
 
@@ -212,6 +212,37 @@ Para ejecutarlo a diario (por ejemplo con el Programador de tareas de Windows en
 docker exec nodo-a-primario-impar psql -U bankdoit -d bankdoit -c "CALL mantenimiento_diario()"
 docker exec nodo-b-primario-par   psql -U bankdoit -d bankdoit -c "CALL mantenimiento_diario()"
 ```
+
+## Respaldo y restauración (#57)
+
+Cada primario archiva su WAL de forma continua (`archive_mode = on`, `archive_command` hacia `respaldos/wal/<fragmento>`, como mínimo cada 60 s). Las réplicas tienen la misma configuración para seguir archivando si se promueven (#18).
+
+```powershell
+.\respaldar.ps1            # respaldo lógico + físico de ambos fragmentos y retención
+.\probar_respaldos.ps1     # restauración, recuperación a un punto en el tiempo y retención
+```
+
+| Respaldo | Herramienta | Dónde (`respaldos\`, fuera del repositorio) | Para qué |
+| --- | --- | --- | --- |
+| Lógico | `pg_dump -Fc` | `logico/<frag>/bankdoit_<frag>_<fecha>.dump` | Restaurar en otra versión o servidor, revisar datos |
+| Roles | `pg_dumpall --roles-only --no-role-passwords` | `logico/<frag>/roles_<frag>_<fecha>.sql` | Recrear roles; **sin contraseñas** |
+| Físico | `pg_basebackup -Ft -z -X stream` | `base/<frag>/<fecha>/` | Base para la recuperación a un punto en el tiempo |
+| WAL | `archive_command` | `wal/<frag>/` | Reproducir los cambios posteriores al respaldo físico |
+| Manifiesto | `respaldar.ps1` | `manifiestos/<frag>_<fecha>.json` | Tamaños, sha256 y conteos para validar la restauración |
+
+`respaldar.ps1` detecta qué instancia es primaria en cada fragmento (también después de una promoción) y ejecuta `init/respaldar.sh` dentro del contenedor como el usuario `postgres`.
+
+**Retención:** el más reciente de cada uno de los últimos 7 días con respaldo, más el más reciente de cada una de las últimas 4 semanas (lógicos); los 2 respaldos físicos más recientes, y se borra con `pg_archivecleanup` el WAL anterior al físico más viejo que se conserva. Se ajusta con `RESPALDO_DIARIOS`, `RESPALDO_SEMANALES` y `RESPALDO_FISICOS`.
+
+**Prueba (`probar_respaldos.ps1`):**
+
+1. Restaura cada respaldo lógico en un PostgreSQL limpio y **sin red**, verifica el sha256 y compara conteos, saldos, restricciones, triggers y la conciliación con el manifiesto.
+2. **Recuperación a un punto en el tiempo:** registra una apuesta válida, marca `pg_create_restore_point(...)`, comete un error (suspender todas las cuentas), y recupera el respaldo físico + WAL con `recovery_target_name`. La base recuperada tiene la apuesta y las cuentas activas, sin el error.
+3. Retención con 40 días de respaldos simulados.
+
+Resultado en [evidencia/evidencia_respaldos.md](evidencia/evidencia_respaldos.md).
+
+**Restaurar en producción:** detener la API, restaurar el respaldo físico en el primario afectado siguiendo el mismo procedimiento de la prueba (`restore_command` y `recovery_target_name` o `recovery_target_time`), reconstruir su réplica con `pg_basebackup` y conciliar. **Copiar `respaldos\` fuera del equipo** (otro disco, otra casa o almacenamiento en la nube, cifrado): un respaldo en el mismo disco no protege si se pierde el equipo. Para programarlo a diario se puede usar el Programador de tareas de Windows con `powershell -File <ruta>\respaldar.ps1`.
 
 ## Consideraciones y pendientes
 

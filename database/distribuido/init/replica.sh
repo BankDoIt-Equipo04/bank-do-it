@@ -43,4 +43,11 @@ if [ -f /var/lib/postgresql/tls/server.crt ]; then
     TLS=(-c ssl=on -c ssl_cert_file=/var/lib/postgresql/tls/server.crt
          -c ssl_key_file=/var/lib/postgresql/tls/server.key -c ssl_min_protocol_version=TLSv1.2)
 fi
-exec postgres -c hot_standby=on -c cluster_name="$REPLICA_NOMBRE" -c wal_receiver_timeout=10s "${TLS[@]}"
+# Si la réplica se promueve (#18), archiva el WAL de su fragmento (#57).
+ARCHIVO=()
+if [ -n "${FRAGMENTO_RESPALDO:-}" ]; then
+    destino="/respaldos/wal/$FRAGMENTO_RESPALDO"
+    ARCHIVO=(-c archive_mode=on -c archive_timeout=60s
+             -c "archive_command=mkdir -p $destino && test ! -f $destino/%f && cp %p $destino/%f")
+fi
+exec postgres -c hot_standby=on -c cluster_name="$REPLICA_NOMBRE" -c wal_receiver_timeout=10s "${TLS[@]}" "${ARCHIVO[@]}"
