@@ -30,6 +30,8 @@ if [ "$en_recuperacion" = "f" ]; then
     if [ "$(psql_admin -tAc 'SELECT nombre FROM fragmento_local')" = "impar" ]; then
         psql_admin -f /scripts/21_directorio_cuentas.sql
     fi
+    # Procedimiento de mantenimiento (#56) en cada primario.
+    psql_admin -f /scripts/22_mantenimiento.sql
 else
     echo "Réplica: el rol bankdoit_api llega desde su primario."
 fi

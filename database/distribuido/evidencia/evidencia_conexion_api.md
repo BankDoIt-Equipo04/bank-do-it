@@ -1,6 +1,6 @@
 ﻿# Evidencia: acceso de la API a los fragmentos (#32)
 
-Generado por `database/distribuido/configurar_acceso_api.ps1` el 2026-11-23 19:44. Simulación de los dos nodos con Docker en una sola computadora (proyecto `bankdoit-ensayo`). Sin contraseñas ni llaves.
+Generado por `database/distribuido/configurar_acceso_api.ps1` el 2026-11-27 13:12. Simulación de los dos nodos con Docker en una sola computadora (proyecto `bankdoit-ensayo`). Sin contraseñas ni llaves.
 
 ## 1. Configuración aplicada dos veces (idempotente)
 
@@ -43,8 +43,8 @@ SELECT ssl, version, cipher, bits FROM pg_stat_ssl WHERE pid = pg_backend_pid();
 
 | Cuenta | usuario_id | Fragmento | Primario | Réplica | Saldo inicial | Saldo final |
 | --- | --- | --- | --- | --- | --- | --- |
-| Prueba-1_1123194430 | 1001 | impar | `ensayo-nodo-a-primario-impar (Nodo A)` | `ensayo-nodo-b-replica-impar (Nodo B)` | 1000.00 / 0.00 | 1100.00 / 0.00 |
-| Prueba-2_1123194430 | 1002 | par | `ensayo-nodo-b-primario-par (Nodo B)` | `ensayo-nodo-a-replica-par (Nodo A)` | 1000.00 / 0.00 | 900.00 / 100.00 |
+| Prueba-1_1127131155 | 1001 | impar | `ensayo-nodo-a-primario-impar (Nodo A)` | `ensayo-nodo-b-replica-impar (Nodo B)` | 1000.00 / 0.00 | 1100.00 / 0.00 |
+| Prueba-2_1127131155 | 1002 | par | `ensayo-nodo-b-primario-par (Nodo B)` | `ensayo-nodo-a-replica-par (Nodo A)` | 1000.00 / 0.00 | 900.00 / 100.00 |
 
 ## 4. Resultados del cliente (rol bankdoit_api)
 
@@ -69,38 +69,38 @@ SELECT ssl, version, cipher, bits FROM pg_stat_ssl WHERE pid = pg_backend_pid();
 | bankdoit_api | directorio | Leer el directorio de cuentas | permiso denegado | permission denied for table cuenta | ✔ |
 | bankdoit_api | directorio | Eliminar funciones | permiso denegado | must be owner of function registrar_apuesta | ✔ |
 | directorio | impar | Registrar dos cuentas seguidas | una impar y una par | [(1001, 'impar'), (1002, 'par')] | ✔ |
-| directorio | impar | Alias repetido con otras mayúsculas (PRUEBA-1_1123194430) | alias_duplicado | alias_duplicado | ✔ |
+| directorio | impar | Alias repetido con otras mayúsculas (PRUEBA-1_1127131155) | alias_duplicado | alias_duplicado | ✔ |
 | catálogo | ambos | Partido de prueba 101 en los dos fragmentos | mismo id, equipos y fecha | América vs. Chivas | ✔ |
-| Prueba-1_1123194430 (id 1001) | impar | Crear bankroll con saldo inicial $1,000 | 1000.00 / 0.00 | 1000.00 / 0.00 | ✔ |
-| Prueba-1_1123194430 (id 1001) | impar | Repetir la creación del bankroll | rechazada sin duplicar (llave duplicada) | duplicate key value violates unique constraint "usuario_pkey" | ✔ |
-| Prueba-1_1123194430 (id 1001) | impar | Iniciar sesión: buscar alias en el directorio | id 1001, activa | id 1001, activa | ✔ |
-| Prueba-1_1123194430 (id 1001) | impar | Validar token de sesión | usuario 1001 | 1001 | ✔ |
-| Prueba-1_1123194430 (id 1001) | impar | Registrar apuesta de $100 a 2.00 | 900.00 / 100.00, nueva | apuesta 7: 900.00 / 100.00, reenvío=False | ✔ |
-| Prueba-1_1123194430 (id 1001) | impar | Reenviar con la misma clave de operación | misma apuesta, sin segundo cargo | apuesta 7: 900.00 / 100.00, reenvío=True | ✔ |
-| Prueba-1_1123194430 (id 1001) | impar | Apuesta mayor al saldo | saldo_insuficiente | saldo_insuficiente | ✔ |
-| Prueba-1_1123194430 (id 1001) | impar | Resolver como ganada | 1100.00 / 0.00 | 1100.00 / 0.00 | ✔ |
-| Prueba-1_1123194430 (id 1001) | impar | Consultar historial (JSON de la API) | 1 apuesta y catálogo | 1 apuesta(s), 4 partidos, bankroll {'en_juego': '0.00', 'disponible': '1100.00'} | ✔ |
-| Prueba-1_1123194430 (id 1001) | par | Consultar su saldo en el otro fragmento | usuario_inexistente | usuario_inexistente | ✔ |
-| Prueba-2_1123194430 (id 1002) | par | Crear bankroll con saldo inicial $1,000 | 1000.00 / 0.00 | 1000.00 / 0.00 | ✔ |
-| Prueba-2_1123194430 (id 1002) | par | Repetir la creación del bankroll | rechazada sin duplicar (llave duplicada) | duplicate key value violates unique constraint "usuario_pkey" | ✔ |
-| Prueba-2_1123194430 (id 1002) | impar | Iniciar sesión: buscar alias en el directorio | id 1002, activa | id 1002, activa | ✔ |
-| Prueba-2_1123194430 (id 1002) | impar | Validar token de sesión | usuario 1002 | 1002 | ✔ |
-| Prueba-2_1123194430 (id 1002) | par | Registrar apuesta de $100 a 2.00 | 900.00 / 100.00, nueva | apuesta 4: 900.00 / 100.00, reenvío=False | ✔ |
-| Prueba-2_1123194430 (id 1002) | par | Reenviar con la misma clave de operación | misma apuesta, sin segundo cargo | apuesta 4: 900.00 / 100.00, reenvío=True | ✔ |
-| Prueba-2_1123194430 (id 1002) | par | Apuesta mayor al saldo | saldo_insuficiente | saldo_insuficiente | ✔ |
-| Prueba-2_1123194430 (id 1002) | par | Consultar historial (JSON de la API) | 1 apuesta y catálogo | 1 apuesta(s), 4 partidos, bankroll {'en_juego': '100.00', 'disponible': '900.00'} | ✔ |
-| Prueba-2_1123194430 (id 1002) | impar | Consultar su saldo en el otro fragmento | usuario_inexistente | usuario_inexistente | ✔ |
-| Prueba-1_1123194430 | impar | Cerrar sesión y validar el token otra vez | token sin efecto (NULL) | cerrada=True, validar=None | ✔ |
+| Prueba-1_1127131155 (id 1001) | impar | Crear bankroll con saldo inicial $1,000 | 1000.00 / 0.00 | 1000.00 / 0.00 | ✔ |
+| Prueba-1_1127131155 (id 1001) | impar | Repetir la creación del bankroll | rechazada sin duplicar (llave duplicada) | duplicate key value violates unique constraint "usuario_pkey" | ✔ |
+| Prueba-1_1127131155 (id 1001) | impar | Iniciar sesión: buscar alias en el directorio | id 1001, activa | id 1001, activa | ✔ |
+| Prueba-1_1127131155 (id 1001) | impar | Validar token de sesión | usuario 1001 | 1001 | ✔ |
+| Prueba-1_1127131155 (id 1001) | impar | Registrar apuesta de $100 a 2.00 | 900.00 / 100.00, nueva | apuesta 7: 900.00 / 100.00, reenvío=False | ✔ |
+| Prueba-1_1127131155 (id 1001) | impar | Reenviar con la misma clave de operación | misma apuesta, sin segundo cargo | apuesta 7: 900.00 / 100.00, reenvío=True | ✔ |
+| Prueba-1_1127131155 (id 1001) | impar | Apuesta mayor al saldo | saldo_insuficiente | saldo_insuficiente | ✔ |
+| Prueba-1_1127131155 (id 1001) | impar | Resolver como ganada | 1100.00 / 0.00 | 1100.00 / 0.00 | ✔ |
+| Prueba-1_1127131155 (id 1001) | impar | Consultar historial (JSON de la API) | 1 apuesta y catálogo | 1 apuesta(s), 4 partidos, bankroll {'en_juego': '0.00', 'disponible': '1100.00'} | ✔ |
+| Prueba-1_1127131155 (id 1001) | par | Consultar su saldo en el otro fragmento | usuario_inexistente | usuario_inexistente | ✔ |
+| Prueba-2_1127131155 (id 1002) | par | Crear bankroll con saldo inicial $1,000 | 1000.00 / 0.00 | 1000.00 / 0.00 | ✔ |
+| Prueba-2_1127131155 (id 1002) | par | Repetir la creación del bankroll | rechazada sin duplicar (llave duplicada) | duplicate key value violates unique constraint "usuario_pkey" | ✔ |
+| Prueba-2_1127131155 (id 1002) | impar | Iniciar sesión: buscar alias en el directorio | id 1002, activa | id 1002, activa | ✔ |
+| Prueba-2_1127131155 (id 1002) | impar | Validar token de sesión | usuario 1002 | 1002 | ✔ |
+| Prueba-2_1127131155 (id 1002) | par | Registrar apuesta de $100 a 2.00 | 900.00 / 100.00, nueva | apuesta 4: 900.00 / 100.00, reenvío=False | ✔ |
+| Prueba-2_1127131155 (id 1002) | par | Reenviar con la misma clave de operación | misma apuesta, sin segundo cargo | apuesta 4: 900.00 / 100.00, reenvío=True | ✔ |
+| Prueba-2_1127131155 (id 1002) | par | Apuesta mayor al saldo | saldo_insuficiente | saldo_insuficiente | ✔ |
+| Prueba-2_1127131155 (id 1002) | par | Consultar historial (JSON de la API) | 1 apuesta y catálogo | 1 apuesta(s), 4 partidos, bankroll {'en_juego': '100.00', 'disponible': '900.00'} | ✔ |
+| Prueba-2_1127131155 (id 1002) | impar | Consultar su saldo en el otro fragmento | usuario_inexistente | usuario_inexistente | ✔ |
+| Prueba-1_1127131155 | impar | Cerrar sesión y validar el token otra vez | token sin efecto (NULL) | cerrada=True, validar=None | ✔ |
 
 ## 5. Dónde quedó cada registro (comprobado como administrador)
 
 | Cuenta | Instancia | Usuario/bankroll/apuestas/movimientos · saldo | Esperado |
 | --- | --- | --- | --- |
-| Prueba-1_1123194430 (id 1001) | `ensayo-nodo-a-primario-impar` | 1/1/1/3 · 1100.00 / 0.00 | 1/1/1/3 · 1100.00 / 0.00 |
-| Prueba-1_1123194430 (id 1001) | `ensayo-nodo-b-replica-impar` | 1/1/1/3 · 1100.00 / 0.00 | 1/1/1/3 · 1100.00 / 0.00 |
-| Prueba-1_1123194430 (id 1001) | `ensayo-nodo-b-primario-par` | 0/0/0/0 · — | 0/0/0/0 · — |
-| Prueba-1_1123194430 (id 1001) | `ensayo-nodo-a-replica-par` | 0/0/0/0 · — | 0/0/0/0 · — |
-| Prueba-2_1123194430 (id 1002) | `ensayo-nodo-a-primario-impar` | 0/0/0/0 · — | 0/0/0/0 · — |
-| Prueba-2_1123194430 (id 1002) | `ensayo-nodo-b-replica-impar` | 0/0/0/0 · — | 0/0/0/0 · — |
-| Prueba-2_1123194430 (id 1002) | `ensayo-nodo-b-primario-par` | 1/1/1/2 · 900.00 / 100.00 | 1/1/1/2 · 900.00 / 100.00 |
-| Prueba-2_1123194430 (id 1002) | `ensayo-nodo-a-replica-par` | 1/1/1/2 · 900.00 / 100.00 | 1/1/1/2 · 900.00 / 100.00 |
+| Prueba-1_1127131155 (id 1001) | `ensayo-nodo-a-primario-impar` | 1/1/1/3 · 1100.00 / 0.00 | 1/1/1/3 · 1100.00 / 0.00 |
+| Prueba-1_1127131155 (id 1001) | `ensayo-nodo-b-replica-impar` | 1/1/1/3 · 1100.00 / 0.00 | 1/1/1/3 · 1100.00 / 0.00 |
+| Prueba-1_1127131155 (id 1001) | `ensayo-nodo-b-primario-par` | 0/0/0/0 · — | 0/0/0/0 · — |
+| Prueba-1_1127131155 (id 1001) | `ensayo-nodo-a-replica-par` | 0/0/0/0 · — | 0/0/0/0 · — |
+| Prueba-2_1127131155 (id 1002) | `ensayo-nodo-a-primario-impar` | 0/0/0/0 · — | 0/0/0/0 · — |
+| Prueba-2_1127131155 (id 1002) | `ensayo-nodo-b-replica-impar` | 0/0/0/0 · — | 0/0/0/0 · — |
+| Prueba-2_1127131155 (id 1002) | `ensayo-nodo-b-primario-par` | 1/1/1/2 · 900.00 / 100.00 | 1/1/1/2 · 900.00 / 100.00 |
+| Prueba-2_1127131155 (id 1002) | `ensayo-nodo-a-replica-par` | 1/1/1/2 · 900.00 / 100.00 | 1/1/1/2 · 900.00 / 100.00 |

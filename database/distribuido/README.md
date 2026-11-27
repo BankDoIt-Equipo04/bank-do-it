@@ -1,6 +1,6 @@
 # Fragmentos de PostgreSQL y sus réplicas
 
-Issues #17 (fragmentos y réplicas), #18 (pruebas de falla) y #32 (acceso de la API). Responsable: Osvaldo Yair Serna Salazar.
+Issues #17 (fragmentos y réplicas), #18 (pruebas de falla), #32 (acceso de la API) y #56 (mantenimiento). Responsable: Osvaldo Yair Serna Salazar.
 
 Aplica la distribución de [docs/distribucion-datos.md](../../docs/distribucion-datos.md) (#3) sobre el esquema de [database/sql](../sql) (#16): usuarios impares en el primario del Nodo A (PC de Luis), pares en el primario del Nodo B (remoto), y cada fragmento con una réplica síncrona en el otro equipo.
 
@@ -181,6 +181,37 @@ La API se conecta a cada primario con la cuenta `bankdoit_api` por TLS (`sslmode
 Para ensayar sin tocar otra instalación se puede usar otro proyecto y prefijo de contenedores: `$env:BANKDOIT_PROYECTO='bankdoit-ensayo'; $env:BANKDOIT_PREFIJO='ensayo-'` y otros puertos (`PUERTO_A_PRIMARIO`, etc.) y subred (`RED_DOCKER_SUBNET`).
 
 **Instalación anterior a #32:** los contenedores necesitan recrearse para activar TLS (`docker compose ... up -d`, los volúmenes se conservan). Si la red `bankdoit-distribuido_default` ya existe con otra subred, Docker pedirá quitarla (`docker network rm bankdoit-distribuido_default`) antes de recrear.
+
+## Procedimiento de mantenimiento (#56)
+
+`init/22_mantenimiento.sql` crea en cada primario el procedimiento `mantenimiento_diario(p_lote)` y la tabla `bitacora_mantenimiento`. Se instala con `configurar_acceso_api.ps1` (o `20_acceso_api.sh`) y se puede reinstalar sin perder la bitácora.
+
+```sql
+CALL mantenimiento_diario();        -- lotes de 1000
+```
+
+| Paso | Qué hace |
+| --- | --- |
+| 1 | Borra las sesiones vencidas (solo en el primario impar, donde vive el directorio) **por lotes, con `COMMIT` entre lotes**, para no bloquear el inicio de sesión |
+| 2 | Ejecuta `conciliar_bankroll()` y cuenta los bankrolls que no cuadran con sus movimientos y apuestas pendientes |
+| 3 | Registra sesiones eliminadas, lotes, bankrolls revisados y descuadrados (con detalle) y duración en `bitacora_mantenimiento`; avisa con `WARNING` si hay descuadres |
+
+**Por qué procedimiento y no función:** una función corre dentro de una sola transacción y no puede hacer `COMMIT`. El procedimiento sí, así que puede confirmar cada lote por separado, y se invoca con `CALL` como tarea de administración. Un procedimiento con control de transacciones no puede ser `SECURITY DEFINER` ni llevar `SET search_path`, por eso usa nombres calificados con `public.` y solo lo ejecuta el administrador: `bankdoit_api` no tiene permiso, y en una réplica responde `solo_en_primario`.
+
+Prueba y evidencia:
+
+```powershell
+.\probar_mantenimiento.ps1      # después de levantar_y_probar.ps1 y configurar_acceso_api.ps1
+```
+
+Crea 2,500 sesiones vencidas y 3 vigentes, simula un saldo alterado por fuera de las funciones y comprueba que el `CALL` borra las vencidas en 3 lotes, conserva las vigentes, detecta el descuadre, se replica y respeta los permisos. Resultado en [evidencia/evidencia_mantenimiento.md](evidencia/evidencia_mantenimiento.md).
+
+Para ejecutarlo a diario (por ejemplo con el Programador de tareas de Windows en cada equipo):
+
+```powershell
+docker exec nodo-a-primario-impar psql -U bankdoit -d bankdoit -c "CALL mantenimiento_diario()"
+docker exec nodo-b-primario-par   psql -U bankdoit -d bankdoit -c "CALL mantenimiento_diario()"
+```
 
 ## Consideraciones y pendientes
 
