@@ -204,7 +204,7 @@ $u4Antes = Disponible $B_PRIM 4
 $u3Antes = Disponible $A_PRIM 3
 
 docker kill $B_PRIM 2>&1 | Out-Null
-Nota "Se apaga de golpe ``$B_PRIM`` (docker kill), como si el equipo remoto perdiera la corriente. La réplica impar del Nodo B sigue encendida."
+Nota "Se apaga de golpe ``$B_PRIM`` (docker kill), como si la laptop de Luis (Nodo B) perdiera la corriente. La réplica impar del Nodo B sigue encendida."
 
 Write-Host '  Operaciones con el primario par caído:'
 $r = Q $A_REPL 'SELECT saldo_disponible FROM bankroll WHERE usuario_id = 4'

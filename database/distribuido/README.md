@@ -2,7 +2,7 @@
 
 Issues #17 (fragmentos y réplicas), #18 (pruebas de falla), #32 (acceso de la API), #56 (mantenimiento) y #57 (respaldos). Responsable: Osvaldo Yair Serna Salazar.
 
-Aplica la distribución de [docs/distribucion-datos.md](../../docs/distribucion-datos.md) (#3) sobre el esquema de [database/sql](../sql) (#16): usuarios impares en el primario del Nodo A (PC de Luis), pares en el primario del Nodo B (remoto), y cada fragmento con una réplica síncrona en el otro equipo.
+Aplica la distribución de [docs/distribucion-datos.md](../../docs/distribucion-datos.md) (#3) sobre el esquema de [database/sql](../sql) (#16): usuarios impares en el primario del Nodo A (PC de escritorio de Luis), pares en el primario del Nodo B (laptop de Luis), y cada fragmento con una réplica síncrona en el otro equipo.
 
 ## Arquitectura
 
@@ -10,12 +10,12 @@ Aplica la distribución de [docs/distribucion-datos.md](../../docs/distribucion-
 flowchart LR
     API["API (FastAPI)<br/>usuario_id % 2"]
 
-    subgraph A["Nodo A — PC de Luis"]
+    subgraph A["Nodo A — PC de escritorio de Luis"]
         AP[("nodo-a-primario-impar<br/>:5441 · escribe impares<br/>dueño del catálogo")]
         AR[("nodo-a-replica-par<br/>:5442 · solo lectura")]
     end
 
-    subgraph B["Nodo B — equipo remoto"]
+    subgraph B["Nodo B — laptop de Luis"]
         BP[("nodo-b-primario-par<br/>:5451 · escribe pares")]
         BR[("nodo-b-replica-impar<br/>:5452 · solo lectura")]
     end
@@ -94,17 +94,17 @@ docker compose --profile nodo-a --profile nodo-b down -v     # los borra
 El mismo `docker-compose.yml` sirve para los dos equipos con perfiles; solo cambia `.env`.
 
 1. **VPN entre los dos equipos** (por ejemplo Tailscale o ZeroTier, gratis). Cada equipo obtiene una IP privada de la VPN. No se abren puertos a internet.
-2. **PC de Luis (Nodo A).** En `.env`:
+2. **PC de escritorio de Luis (Nodo A).** En `.env`:
    ```
-   BIND_IP=<IP VPN de la PC de Luis>
-   PAR_PRIMARIO_HOST=<IP VPN del nodo remoto>
+   BIND_IP=<IP de la PC de escritorio de Luis>
+   PAR_PRIMARIO_HOST=<IP de la laptop de Luis>
    PAR_PRIMARIO_PUERTO=5451
    ```
    y `docker compose --profile nodo-a up -d nodo-a-primario-impar`.
-3. **Nodo remoto (Nodo B).** En `.env`:
+3. **Laptop de Luis (Nodo B).** En `.env`:
    ```
-   BIND_IP=<IP VPN del nodo remoto>
-   IMPAR_PRIMARIO_HOST=<IP VPN de la PC de Luis>
+   BIND_IP=<IP de la laptop de Luis>
+   IMPAR_PRIMARIO_HOST=<IP de la PC de escritorio de Luis>
    IMPAR_PRIMARIO_PUERTO=5441
    ```
    y `docker compose --profile nodo-b up -d nodo-b-primario-par`.

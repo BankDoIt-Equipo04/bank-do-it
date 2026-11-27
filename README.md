@@ -18,13 +18,13 @@ Todos los movimientos serán simulados. La aplicación no moverá dinero real ni
 
 La aplicación se desarrollará en Flutter con una base de código compartida para Android, web y escritorio nativo. Las tres versiones se comunicarán con una API REST en Python, encargada de validar los registros y actualizar el saldo.
 
-La base de datos relacional se distribuirá entre un equipo local y otro remoto. Se usará `usuario_id` como clave de fragmentación para mantener las apuestas de una persona en el mismo fragmento. Así, al consultar su historial o calcular su ROI, el sistema podrá recuperar sus apuestas desde ese fragmento. Se configurará replicación entre nodos. MongoDB almacenará los datos preparados para el análisis y Matplotlib generará las gráficas.
+La base de datos relacional se distribuirá entre dos equipos: la PC de escritorio de Luis (Nodo A) y su laptop (Nodo B). Se usará `usuario_id` como clave de fragmentación para mantener las apuestas de una persona en el mismo fragmento. Así, al consultar su historial o calcular su ROI, el sistema podrá recuperar sus apuestas desde ese fragmento. Se configurará replicación entre nodos. MongoDB almacenará los datos preparados para el análisis y Matplotlib generará las gráficas.
 
 Para confirmar una apuesta, el sistema priorizará la consistencia del saldo. Si se pierde la conexión, el usuario podrá guardar un borrador en su dispositivo. Cuando vuelva la conexión, la API verificará que haya saldo suficiente antes de confirmarlo. Si el dispositivo envía el mismo borrador dos veces, el monto deberá descontarse una sola vez.
 
 ## Infraestructura y presupuesto
 
-La computadora de escritorio de Luis funcionará como servidor principal y otro equipo del grupo se utilizará como nodo remoto. Los servicios se ejecutarán en contenedores con comunicación cifrada, control de acceso y monitoreo. Se utilizarán datos sintéticos en las pruebas.
+La computadora de escritorio de Luis funcionará como Nodo A y su laptop como Nodo B; cada uno aloja un primario y la réplica del otro fragmento. Los servicios se ejecutarán en contenedores con comunicación cifrada, control de acceso y monitoreo. Se utilizarán datos sintéticos en las pruebas.
 
 El gasto adicional previsto es de **$0 MXN**, considerando que el equipo aportará las computadoras y utilizará las conexiones a internet disponibles.
 
