@@ -133,6 +133,7 @@ BEGIN
     END IF;
 END $$;
 REVOKE ALL ON FUNCTION exigir_administrador(BYTEA) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION exigir_administrador(BYTEA) TO bankdoit_api;
 
 CREATE OR REPLACE FUNCTION listar_cuentas_admin(p_huella BYTEA)
 RETURNS TABLE (alias VARCHAR, estado VARCHAR)

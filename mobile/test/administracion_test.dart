@@ -27,8 +27,23 @@ void main() {
         }
         expect(req.headers['Authorization'], 'Bearer prueba');
         if (req.url.path == '/admin/cuentas') {
-          return http.Response(
-            '{"cuentas":[{"alias":"raul","estado":"activo"}]}',
+          return http.Response('[{"alias":"raul","estado":"activa"}]', 200);
+        }
+        if (req.url.path == '/admin/equipos') {
+          return http.Response.bytes(
+            utf8.encode(
+              jsonEncode({
+                'equipos': [
+                  for (final i in [1, 2, 3, 4])
+                    {
+                      'deporte_id': i < 3 ? 1 : 2,
+                      'deporte': i < 3 ? 'Fútbol' : 'Fútbol americano',
+                      'equipo_id': i,
+                      'nombre': 'Equipo $i',
+                    },
+                ],
+              }),
+            ),
             200,
           );
         }
@@ -43,35 +58,33 @@ void main() {
       await tester.pumpWidget(MaterialApp(home: Administracion(api: api)));
       await tester.pumpAndSettle();
       expect(find.text('raul'), findsOneWidget);
-      expect(find.text('activo'), findsOneWidget);
+      expect(find.text('activa'), findsOneWidget);
       await tester.tap(find.text('Jornadas'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byType(DropdownButtonFormField<String>));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Fútbol americano').last);
-      await tester.pumpAndSettle();
+      Future<void> elegir(int campo, String opcion) async {
+        final selector = find.byType(DropdownButtonFormField<int>).at(campo);
+        await tester.ensureVisible(selector);
+        await tester.tap(selector);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(opcion).last);
+        await tester.pumpAndSettle();
+      }
+
+      await elegir(0, 'Fútbol americano');
       for (final n in [1, 2]) {
-        await tester.enterText(find.byType(TextFormField).first, 'Local $n');
-        await tester.enterText(find.byType(TextFormField).last, 'Visitante $n');
+        await elegir(1, n == 1 ? 'Equipo 3' : 'Equipo 4');
+        await elegir(2, n == 1 ? 'Equipo 4' : 'Equipo 3');
         final guardar = find.text('Guardar y agregar otro');
         await tester.ensureVisible(guardar);
         await tester.tap(guardar);
         await tester.pumpAndSettle();
         expect(find.text('Partido guardado.'), findsOneWidget);
-        expect(
-          tester
-              .widget<TextFormField>(find.byType(TextFormField).first)
-              .controller!
-              .text,
-          isEmpty,
-        );
       }
-      expect(
-        enviados.map((j) => j['deporte']),
-        everyElement('Fútbol americano'),
-      );
-      expect(enviados.first['fecha'], enviados.last['fecha']);
-      expect(enviados.last['local'], 'Local 2');
+      expect(enviados.map((j) => j['deporte_id']), everyElement(2));
+      expect(enviados.first['fecha_hora'], enviados.last['fecha_hora']);
+      expect(DateTime.parse(enviados.first['fecha_hora']).isUtc, isTrue);
+      expect(enviados.map((j) => j['equipo_local_id']), [3, 4]);
+      expect(enviados.map((j) => j['equipo_visitante_id']), [4, 3]);
       expect(claves.length, 2);
     },
   );

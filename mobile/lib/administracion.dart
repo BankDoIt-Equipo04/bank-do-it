@@ -11,21 +11,16 @@ class Administracion extends StatefulWidget {
 
 class _AdministracionState extends State<Administracion> {
   late Future<List<Json>> cuentas = widget.api.cuentasAdministradas();
-  final local = TextEditingController(), visitante = TextEditingController();
+  late Future<List<Json>> equipos = widget.api.catalogoEquipos();
+  int? local, visitante, deporte;
+  TimeOfDay hora = const TimeOfDay(hour: 12, minute: 0);
   final form = GlobalKey<FormState>();
-  String deporte = 'Fútbol';
+
   DateTime fecha = DateUtils.dateOnly(DateTime.now());
   String? aviso;
   String clave = ApiApuestas.nuevaClave();
   bool guardando = false, reintento = false;
-  @override
-  void dispose() {
-    local.dispose();
-    visitante.dispose();
-    super.dispose();
-  }
-
-  Future<void> guardar() async {
+  Future<void> guardar(int deporteId) async {
     if (guardando || !form.currentState!.validate()) return;
     setState(() {
       guardando = true;
@@ -33,14 +28,19 @@ class _AdministracionState extends State<Administracion> {
     });
     try {
       await widget.api.crearPartido({
-        'deporte': deporte,
-        'fecha': fecha.toIso8601String().split('T').first,
-        'local': local.text.trim(),
-        'visitante': visitante.text.trim(),
+        'deporte_id': deporteId,
+        'fecha_hora': DateTime(
+          fecha.year,
+          fecha.month,
+          fecha.day,
+          hora.hour,
+          hora.minute,
+        ).toUtc().toIso8601String(),
+        'equipo_local_id': local,
+        'equipo_visitante_id': visitante,
       }, clave);
       if (!mounted) return;
-      local.clear();
-      visitante.clear();
+      local = visitante = null;
       setState(() {
         aviso = 'Partido guardado.';
         reintento = false;
@@ -113,78 +113,150 @@ class _AdministracionState extends State<Administracion> {
                 );
               },
             ),
-            Form(
-              key: form,
-              child: ListView(
-                padding: const EdgeInsets.all(20),
-                children: [
-                  DropdownButtonFormField<String>(
-                    initialValue: deporte,
-                    decoration: const InputDecoration(labelText: 'Deporte'),
-                    items: [
-                      for (final d in ['Fútbol', 'Fútbol americano'])
-                        DropdownMenuItem(value: d, child: Text(d)),
-                    ],
-                    onChanged: editable
-                        ? (d) => setState(() => deporte = d!)
-                        : null,
-                  ),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Fecha de la jornada'),
-                    subtitle: Text(
-                      MaterialLocalizations.of(context).formatMediumDate(fecha),
+            FutureBuilder<List<Json>>(
+              future: equipos,
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(snapshot.error.toString()),
+                        TextButton(
+                          onPressed: () => setState(() {
+                            equipos = widget.api.catalogoEquipos();
+                          }),
+                          child: const Text('Reintentar'),
+                        ),
+                      ],
                     ),
-                    trailing: const Icon(Icons.calendar_today),
-                    onTap: !editable
-                        ? null
-                        : () async {
-                            final dia = await showDatePicker(
-                              context: context,
-                              initialDate: fecha,
-                              firstDate: DateTime(2000),
-                              lastDate: DateTime(2100),
-                            );
-                            if (mounted && dia != null) {
-                              setState(() => fecha = dia);
-                            }
-                          },
-                  ),
-                  for (final (control, etiqueta) in [
-                    (local, 'Equipo local'),
-                    (visitante, 'Equipo visitante'),
-                  ])
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: TextFormField(
-                        controller: control,
-                        enabled: editable,
-                        decoration: InputDecoration(labelText: etiqueta),
-                        validator: (v) {
-                          if (v == null || v.trim().isEmpty) {
-                            return 'Escribe el nombre del equipo.';
-                          }
-                          if (control == visitante &&
-                              v.trim().toLowerCase() ==
-                                  local.text.trim().toLowerCase()) {
-                            return 'Elige dos equipos distintos.';
-                          }
-                          return null;
-                        },
+                  );
+                }
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final catalogo = snapshot.requireData;
+                if (catalogo.isEmpty) {
+                  return const Center(
+                    child: Text('Sin equipos en el catálogo.'),
+                  );
+                }
+                final deportes = {
+                  for (final e in catalogo)
+                    e['deporte_id'] as int: e['deporte'] as String,
+                };
+                final seleccionado = deporte ?? deportes.keys.first;
+                final opciones = catalogo.where(
+                  (e) => e['deporte_id'] == seleccionado,
+                );
+                return Form(
+                  key: form,
+                  child: ListView(
+                    padding: const EdgeInsets.all(20),
+                    children: [
+                      DropdownButtonFormField<int>(
+                        initialValue: seleccionado,
+                        decoration: const InputDecoration(labelText: 'Deporte'),
+                        items: [
+                          for (final d in deportes.entries)
+                            DropdownMenuItem(
+                              value: d.key,
+                              child: Text(d.value),
+                            ),
+                        ],
+                        onChanged: editable
+                            ? (id) => setState(() {
+                                deporte = id;
+                                local = visitante = null;
+                              })
+                            : null,
                       ),
-                    ),
-                  FilledButton(
-                    onPressed: guardando ? null : guardar,
-                    child: Text(
-                      reintento
-                          ? 'Reintentar guardado'
-                          : 'Guardar y agregar otro',
-                    ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Fecha de la jornada'),
+                        subtitle: Text(
+                          MaterialLocalizations.of(context)
+                              .formatMediumDate(fecha),
+                        ),
+                        trailing: const Icon(Icons.calendar_today),
+                        onTap: !editable
+                            ? null
+                            : () async {
+                                final dia = await showDatePicker(
+                                  context: context,
+                                  initialDate: fecha,
+                                  firstDate: DateTime(2000),
+                                  lastDate: DateTime(2100),
+                                );
+                                if (mounted && dia != null) {
+                                  setState(() => fecha = dia);
+                                }
+                              },
+                      ),
+                      ListTile(
+                        title: const Text('Hora local del partido'),
+                        subtitle: Text(hora.format(context)),
+                        onTap: !editable
+                            ? null
+                            : () async {
+                                final nueva = await showTimePicker(
+                                  context: context,
+                                  initialTime: hora,
+                                );
+                                if (mounted && nueva != null) {
+                                  setState(() => hora = nueva);
+                                }
+                              },
+                      ),
+                      for (final esLocal in [true, false])
+                        DropdownButtonFormField<int>(
+                          key: ValueKey((esLocal, seleccionado, clave)),
+                          initialValue: esLocal ? local : visitante,
+                          decoration: InputDecoration(
+                            labelText: esLocal
+                                ? 'Equipo local'
+                                : 'Equipo visitante',
+                          ),
+                          items: [
+                            for (final e in opciones)
+                              DropdownMenuItem(
+                                value: e['equipo_id'] as int,
+                                child: Text(e['nombre'] as String),
+                              ),
+                          ],
+                          onChanged: editable
+                              ? (id) => setState(() {
+                                  if (esLocal) {
+                                    local = id;
+                                  } else {
+                                    visitante = id;
+                                  }
+                                })
+                              : null,
+                          validator: (id) {
+                            if (id == null) return 'Selecciona un equipo.';
+                            if (!esLocal && id == local) {
+                              return 'Elige dos equipos distintos.';
+                            }
+                            return null;
+                          },
+                        ),
+                      FilledButton(
+                        onPressed: guardando
+                            ? null
+                            : () => guardar(seleccionado),
+                        child: Text(
+                          reintento
+                              ? 'Reintentar guardado'
+                              : 'Guardar y agregar otro',
+                        ),
+                      ),
+                      if (aviso != null)
+                        Semantics(liveRegion: true, child: Text(aviso!)),
+                    ],
                   ),
-                  if (aviso != null)
-                    Semantics(liveRegion: true, child: Text(aviso!)),
-                ],
-              ),
+                );
+              },
             ),
           ],
         ),

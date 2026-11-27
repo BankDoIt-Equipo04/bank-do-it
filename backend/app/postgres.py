@@ -101,7 +101,7 @@ def iniciar(datos: Credenciales, response: Response):
         db.execute("SELECT crear_sesion(%s,%s,%s)", (huella(token), cuenta["usuario_id"], vence))
     response.headers["Cache-Control"] = "no-store"
     return {"usuario_id": cuenta["usuario_id"], "alias": cuenta["alias"], "access_token": token,
-            "token_type": ESQUEMA_HTTP, "expires_in": DURACION_SEGUNDOS}
+            "rol": cuenta["rol"], "token_type": ESQUEMA_HTTP, "expires_in": DURACION_SEGUNDOS}
 
 
 def sesion(credencial: Portador):
@@ -121,6 +121,18 @@ SesionPG = Annotated[tuple, Depends(sesion)]
 def listar_cuentas(actual: SesionPG):
     with conexion() as db:
         return db.execute("SELECT alias, estado FROM listar_cuentas_admin(%s)", (actual[1],)).fetchall()
+
+
+@admin_pg.get("/equipos")
+def catalogo_equipos(actual: SesionPG):
+    with conexion() as db:
+        # Autorizar con la misma función del directorio que protege las cuentas.
+        db.execute("SELECT exigir_administrador(%s)", (actual[1],))
+        equipos = db.execute(
+            "SELECT e.equipo_id, e.nombre, d.deporte_id, d.nombre AS deporte "
+            "FROM equipo e JOIN deporte d USING (deporte_id) ORDER BY d.nombre, e.nombre"
+        ).fetchall()
+        return {"equipos": equipos}
 
 
 class NuevoPartido(BaseModel):

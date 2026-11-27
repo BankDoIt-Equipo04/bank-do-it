@@ -23,6 +23,10 @@ Para las pruebas de navegación con datos controlados, ejecuta `flutter test` de
 
 ## Administración (#39)
 
-La pantalla se habilita cuando el login devuelve `rol: "administrador"`. El contrato propuesto para el #38 usa `GET /admin/cuentas` con respuesta `{"cuentas":[{"alias":"demo","estado":"activo"}]}`, y `POST /admin/partidos` con `deporte`, `fecha` (AAAA-MM-DD), `local` y `visitante`. Ambos usan la sesión y requieren autorización de administrador en el servidor. El alta envía `Idempotency-Key` para repetir el mismo envío si se pierde la respuesta. Los deportes enviados son «Fútbol» y «Fútbol americano».
+La administración requiere la API en modo PostgreSQL y una cuenta activa con rol administrador. En una instalación existente, aplicar la versión actual de `database/distribuido/init/21_directorio_cuentas.sql` al primario impar. Al iniciar sesión aparece el acceso a Administración. Cuentas muestra el alias y el estado. En Jornadas, elige deporte, fecha, hora local y dos equipos del catálogo. «Guardar y agregar otro» conserva la jornada y limpia los equipos. El catálogo debe contener al menos dos equipos del deporte elegido.
 
-La prueba `flutter test test/administracion_test.dart` usa respuestas simuladas para consultar las cuentas y registrar dos partidos de una jornada. La integración real requiere las rutas del #38.
+Flutter consume `GET /admin/cuentas` (lista), `GET /admin/equipos` y `POST /admin/partidos`. Envía los identificadores de deporte y equipos, y la fecha y hora convertidas a UTC. PostgreSQL impide repetir el mismo encuentro a la misma hora.
+
+Ejecuta `flutter test test/administracion_test.dart` para comprobar la captura consecutiva con un catálogo simulado.
+
+Para repetir la integración en Windows, usa una base PostgreSQL de prueba con el catálogo de ejemplo (Chiefs y Eagles), una cuenta administradora activa y sin esos encuentros registrados hoy a mediodía. Desde `mobile` ejecuta `flutter test -d windows integration_test/administracion_test.dart --dart-define=API_URL=http://127.0.0.1:8000 --dart-define=ADMIN_PRUEBA=ALIAS_DE_PRUEBA --dart-define=CLAVE_PRUEBA=CLAVE_DE_PRUEBA`. La prueba crea dos partidos en esa base.
