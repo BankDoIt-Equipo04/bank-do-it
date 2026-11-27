@@ -3,6 +3,7 @@ import 'dart:async';
 import 'borradores.dart';
 import 'bankroll.dart';
 import 'acceso.dart';
+import 'administracion.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -252,12 +253,27 @@ class _PrincipalState extends State<Principal> {
             tooltip: 'Cerrar sesión (${api.sesion!.alias})',
             icon: const Icon(Icons.logout),
           );
+    final administracion = api.sesion!.administrador
+        ? IconButton(
+            tooltip: 'Administración',
+            icon: const Icon(Icons.admin_panel_settings_outlined),
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => Administracion(api: api),
+                ),
+              );
+              if (mounted) actualizar();
+            },
+          )
+        : null;
     final superior = kIsWeb || movil;
     return Scaffold(
       appBar: superior
           ? AppBar(
               backgroundColor: Colors.white,
-              actions: [botonSalir],
+              actions: [?administracion, botonSalir],
               surfaceTintColor: Colors.transparent,
               title: kIsWeb
                   ? SingleChildScrollView(
@@ -315,7 +331,10 @@ class _PrincipalState extends State<Principal> {
                       padding: EdgeInsets.all(8),
                       child: Marca(),
                     ),
-                    trailing: botonSalir,
+                    trailing: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [?administracion, botonSalir],
+                    ),
                     labelType: NavigationRailLabelType.all,
                     selectedIndex: actual.index,
                     onDestinationSelected: seleccionar,

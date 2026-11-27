@@ -60,7 +60,8 @@ class FalloApi implements Exception {
 }
 
 class Sesion {
-  const Sesion(this.id, this.alias, this.token);
+  const Sesion(this.id, this.alias, this.token, {this.administrador = false});
+  final bool administrador;
   final int id;
   final String alias, token;
 }
@@ -105,7 +106,12 @@ class ApiApuestas {
     );
     return ApiApuestas(
       cliente: cliente,
-      sesion: Sesion(j['usuario_id'], j['alias'], j['access_token']),
+      sesion: Sesion(
+        j['usuario_id'],
+        j['alias'],
+        j['access_token'],
+        administrador: j['rol'] == 'administrador',
+      ),
     );
   }
 
@@ -126,6 +132,22 @@ class ApiApuestas {
   }
 
   Future<Json> _enviar(
+    String metodo,
+    String ruta, {
+    Json? datos,
+    String? clave,
+  }) async {
+    final respuesta = await _solicitar(
+      metodo,
+      ruta,
+      datos: datos,
+      clave: clave,
+    );
+    if (respuesta is Json) return respuesta;
+    throw FalloApi('La API devolvió una respuesta inesperada.');
+  }
+
+  Future<Object?> _solicitar(
     String metodo,
     String ruta, {
     Json? datos,
@@ -157,11 +179,11 @@ class ApiApuestas {
       }
       if (res.statusCode == 204 ||
           (ruta == 'auth/logout' && res.statusCode == 401)) {
-        return {};
+        return <String, dynamic>{};
       }
-      final j = jsonDecode(utf8.decode(res.bodyBytes)) as Json;
+      final j = jsonDecode(utf8.decode(res.bodyBytes));
       if (res.statusCode >= 400) {
-        final detalle = j['detail'];
+        final detalle = j is Map ? j['detail'] : null;
         if (res.statusCode == 404 &&
             detalle == 'Not Found' &&
             (ruta.endsWith('/bankroll/movimientos') ||
@@ -177,6 +199,10 @@ class ApiApuestas {
           );
         }
         throw FalloApi(switch (detalle) {
+          'partido_duplicado' =>
+            'Ya existe ese partido a esa hora. Revisa la jornada.',
+          'equipos_invalidos' =>
+            'Elige dos equipos distintos del mismo deporte.',
           'saldo_insuficiente' => 'Saldo insuficiente.',
           'resultado_en_conflicto' => 'La apuesta ya tiene otro resultado. Vuelve al historial y actualiza.',
           _ => detalle is String ? detalle : 'Revisa los datos de la apuesta.',
@@ -199,6 +225,38 @@ class ApiApuestas {
         reintentar: true,
       );
     }
+  }
+
+  Future<List<Json>> cuentasAdministradas() async {
+    final cuentas = await _solicitar('GET', 'admin/cuentas');
+    if (cuentas is! List ||
+        !cuentas.every(
+          (c) => c is Json && c['alias'] is String && c['estado'] is String,
+        )) {
+      throw FalloApi('La API no devolvió la lista de cuentas.');
+    }
+    return List<Json>.from(cuentas);
+  }
+
+  Future<List<Json>> catalogoEquipos() async {
+    final datos = await _enviar('GET', 'admin/equipos');
+    final filas = datos['equipos'];
+    if (filas is! List ||
+        !filas.every(
+          (e) =>
+              e is Json &&
+              e['equipo_id'] is int &&
+              e['nombre'] is String &&
+              e['deporte_id'] is int &&
+              e['deporte'] is String,
+        )) {
+      throw FalloApi('La API no devolvió el catálogo de equipos.');
+    }
+    return List<Json>.from(filas);
+  }
+
+  Future<void> crearPartido(Json partido, String clave) async {
+    await _enviar('POST', 'admin/partidos', datos: partido, clave: clave);
   }
 
   Future<List<Json>> movimientos() async {
