@@ -130,6 +130,7 @@ erDiagram
 | El historial no se edita ni se borra | triggers `trg_movimiento_inmutable` y `trg_apuesta_no_borrar` |
 | Ninguna apuesta existe sin su reserva | trigger diferido `trg_apuesta_con_movimiento` |
 | Aportaciones/retiros no cuentan como ganancia | tipos de movimiento propios + `ganancia_neta` |
+| Limpieza de sesiones y conciliación periódica | procedimiento `mantenimiento_diario()` (#56, en `distribuido/`) |
 | Monto apostado en la semana (alerta de límite) | `apostado_semana` (no bloquea; la app pregunta) |
 
 ### Por qué función, trigger o restricción
@@ -137,6 +138,7 @@ erDiagram
 - **Restricciones (`CHECK`, `UNIQUE`, FK):** reglas sobre una sola fila o una relación; las garantiza el motor sin código.
 - **Triggers:** reglas que deben cumplirse aunque alguien escriba SQL directo (no pasar por la API): el saldo se actualiza solo con movimientos, el historial es inmutable y no hay apuestas sin reserva.
 - **Funciones:** operaciones de negocio de varios pasos que deben ser una transacción atómica y devolver errores claros: registrar y resolver apuestas, aportaciones, retiros y consultas de resumen.
+- **Procedimiento:** tareas de administración que confirman su trabajo por partes (`COMMIT` dentro del procedimiento) y se ejecutan con `CALL`: `mantenimiento_diario()` (#56).
 
 ## Funciones para la API
 
