@@ -3,7 +3,8 @@ services:
   mongo:
     image: mongo:7.0
     ports:
-      - "127.0.0.1:27017:27017"
+      # MONGO_PUERTO permite convivir con otro MongoDB local en 27017 (#58).
+      - "127.0.0.1:${MONGO_PUERTO:-27017}:27017"
     volumes:
       - datos:/data/db
 volumes:
