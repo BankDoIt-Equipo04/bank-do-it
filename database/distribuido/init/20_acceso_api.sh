@@ -43,6 +43,7 @@ cp "$PGDATA/pg_hba.conf" "$PGDATA/pg_hba.conf.anterior"
     echo "# Gestionado por /scripts/20_acceso_api.sh (#32). No editar a mano."
     echo "# TIPO   BASE         USUARIO          ORIGEN            MÉTODO"
     echo "local    all          all                                trust          # docker exec (administración)"
+    echo "local    replication  all                                trust          # pg_basebackup dentro del contenedor (#57)"
     echo "host     all          all              127.0.0.1/32      scram-sha-256"
     for cidr in $API_ORIGEN_CIDR; do
         echo "hostssl  $BASE     bankdoit_api     $cidr   scram-sha-256  # API: solo con TLS"
